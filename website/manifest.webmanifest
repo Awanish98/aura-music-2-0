@@ -1,0 +1,63 @@
+{
+  "name": "AURA MUSIC 2.0",
+  "short_name": "AURA",
+  "description": "A premium music ecosystem with real catalog search, cinematic playback and synchronized LyricsPlay.",
+  "id": "/aura-music-2/",
+  "start_url": "./index.html#/home",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#05060a",
+  "theme_color": "#080a12",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "./favicon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./favicon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Search music",
+      "short_name": "Search",
+      "description": "Find songs, albums and artists in the AURA catalog.",
+      "url": "./index.html#/search"
+    },
+    {
+      "name": "Open LyricsPlay",
+      "short_name": "Lyrics",
+      "description": "Show synchronized cinematic lyrics for the current song.",
+      "url": "./index.html#/lyrics"
+    },
+    {
+      "name": "Download Android app",
+      "short_name": "Download",
+      "description": "Get the verified AURA MUSIC signed APK.",
+      "url": "./index.html#/download"
+    }
+  ],
+  "prefer_related_applications": true,
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "echo.music.iad1tya"
+    }
+  ]
+}

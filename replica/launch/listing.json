@@ -1,0 +1,16 @@
+{
+  "avoid": [
+    "Poweramp",
+    "MO Agamy",
+    "Vivi Music",
+    "Vivimusic",
+    "Metrolist",
+    "Echo Music",
+    "Jordan"
+  ],
+  "google_play": {
+    "title": "AURA MUSIC: Lyric Visuals",
+    "short_description": "15 premium lyric looks, BeatIQ AUTO and a real 3D visualizer on one player.",
+    "full_description": "AURA MUSIC turns the music you already have into a living, reactive stage.\n\nONE PLAYER, INFINITE WAYS TO FEEL IT\nEvery look reads the same Media3/ExoPlayer clock — one queue, one position, nothing drifts out of sync.\n\n- 15 handcrafted premium lyric looks across five type voices: Aurora, Noir, Golden Hour, Neon, Ember, Prism, Chrome, Terminal, Hologram, Orbit, Tidal, Depth, Echo, Poster and Stardust\n- Large, editorial type with a bold current word, karaoke fill and true-black AMOLED contrast\n- BeatIQ AUTO reads real BPM, beat, bass, energy and drop on your device, then picks a look with hysteresis so the screen never strobes\n- CODE POETRY renders your synced words as living code with syntax colour, camera motion and an AMOLED edge\n- Clean Lyrics for a distraction-free full-screen reading surface\n- A full-screen visualizer with Spectrum, Radial, Wave, Particles, Rings, Aurora and a true 3D Pattern\n- Frosted glass controls and immersive overlays that keep every button tappable\n\nPRIVATE BY DESIGN\nAudio is analysed locally with Android's Visualizer API. No music or audio is uploaded. There is no account, no advertising, no analytics SDK in the shipping build, and the optional intelligence backend is off unless you configure it yourself. Even then it only steers visuals — it never writes a lyric or a timestamp.\n\nAURA MUSIC is free to use and released under GPLv3. Install, pick your first look, and feel every frequency."
+  }
+}

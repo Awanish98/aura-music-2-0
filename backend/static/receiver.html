@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>AURA MUSIC · Cinematic Receiver</title>
+<style>
+  :root {
+    --bg: #050407;
+    --primary: #e8c77b;
+    --secondary: #ffb95c;
+    --accent: #8a6a2f;
+    --text: #f3ede2;
+    --muted: #8a8278;
+    --aw: 16;
+    --ah: 9;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #000;
+    color: var(--text);
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .screen { display: none; width: 100%; height: 100%; align-items: center; justify-content: center; }
+  .screen.active { display: flex; }
+
+  /* ---- pairing -------------------------------------------------------- */
+  #pairScreen {
+    background:
+      radial-gradient(900px 600px at 50% -10%, rgba(232,199,123,.14), transparent 70%),
+      radial-gradient(700px 500px at 90% 110%, rgba(140,90,255,.10), transparent 70%),
+      #050407;
+  }
+  .pair-card {
+    width: min(92vw, 420px);
+    padding: 34px 32px 28px;
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 22px;
+    background: rgba(14,13,18,.78);
+    box-shadow: 0 30px 90px rgba(0,0,0,.6), inset 0 1px rgba(255,255,255,.05);
+    backdrop-filter: blur(14px);
+  }
+  .brand { font-size: 12px; letter-spacing: .42em; font-weight: 700; color: var(--primary); }
+  .brand span { color: var(--muted); font-weight: 500; }
+  .pair-card h1 { font-size: 26px; font-weight: 600; margin: 18px 0 6px; letter-spacing: -.02em; }
+  .sub { margin: 0 0 24px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+  label { display: block; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 0 0 16px; }
+  input {
+    display: block; width: 100%; margin-top: 8px;
+    padding: 13px 14px; border-radius: 11px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.045); color: var(--text);
+    font: inherit; font-size: 16px; outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,199,123,.13); }
+  #code { letter-spacing: .55em; font-variant-numeric: tabular-nums; text-align: center; font-size: 22px; }
+  button {
+    width: 100%; padding: 13px; border: 0; border-radius: 11px; cursor: pointer;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: #100c05; font: inherit; font-weight: 700; letter-spacing: .02em;
+    transition: transform .15s, filter .15s;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .55; cursor: wait; }
+  .error { min-height: 18px; margin: 12px 0 0; color: #ff8f8f; font-size: 12px; }
+  .honest {
+    margin: 22px 0 0; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.07);
+    font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: var(--muted); text-align: center;
+  }
+
+  /* ---- stage ----------------------------------------------------------- */
+  .aspect-16-9  { --aw: 16; --ah: 9; }
+  .aspect-16-10 { --aw: 16; --ah: 10; }
+  .aspect-21-9  { --aw: 21; --ah: 9; }
+  .stage {
+    position: relative; overflow: hidden;
+    width: min(100vw, calc(100vh * var(--aw) / var(--ah)));
+    aspect-ratio: var(--aw) / var(--ah);
+    background: var(--bg);
+    box-shadow: 0 0 120px rgba(0,0,0,.9);
+    transition: width .35s ease, background-color 1s linear;
+  }
+  #fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 100% at 50% 40%, transparent 30%, rgba(0,0,0,.55) 100%);
+  }
+  .topbar, .foot {
+    position: absolute; left: 0; right: 0; z-index: 3;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: clamp(12px, 2.2vh, 26px) clamp(18px, 3vw, 52px);
+    font-size: clamp(9px, 1.05vh, 12px); letter-spacing: .14em; text-transform: uppercase;
+  }
+  .topbar { top: 0; }
+  .foot { bottom: 0; color: var(--muted); }
+  .status { display: flex; align-items: center; gap: 9px; color: color-mix(in srgb, var(--text) 75%, transparent); }
+  #statusDot {
+    width: 7px; height: 7px; border-radius: 50%; background: #8d8d8d;
+    box-shadow: 0 0 10px currentColor; transition: background .4s;
+  }
+  #statusDot.live { background: #6ee7a8; }
+  #statusDot.issue { background: #ffb45e; }
+  .aspect-picker { display: flex; gap: 5px; }
+  .aspect-picker button {
+    width: auto; padding: 6px 9px; border-radius: 7px;
+    background: rgba(255,255,255,.07); color: var(--muted);
+    border: 1px solid rgba(255,255,255,.08); font-size: 10px; letter-spacing: .08em;
+  }
+  .aspect-picker button.on { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 50%, transparent); }
+
+  .content {
+    position: absolute; inset: 0; z-index: 2;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-rows: auto 1fr; align-items: center;
+    gap: 0 clamp(16px, 3vw, 56px);
+    padding: clamp(60px, 11vh, 120px) clamp(24px, 6vw, 110px) clamp(46px, 9vh, 90px);
+  }
+  .art {
+    grid-row: 1 / span 2; align-self: center;
+    width: min(100%, 30vh); aspect-ratio: 1; justify-self: center;
+    border-radius: 18px; position: relative; overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--primary) 32%, transparent);
+    background:
+      radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--secondary) 45%, transparent), transparent 60%),
+      conic-gradient(from 210deg, color-mix(in srgb, var(--accent) 55%, #000), #0b0a10, color-mix(in srgb, var(--primary) 30%, #000), #0b0a10);
+    box-shadow: 0 24px 70px rgba(0,0,0,.65), 0 0 50px color-mix(in srgb, var(--primary) 14%, transparent);
+    display: grid; place-items: center;
+    transition: transform .3s ease, box-shadow .4s ease;
+  }
+  .art::before, .art::after {
+    content: ""; position: absolute; border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+  }
+  .art::before { width: 62%; height: 62%; }
+  .art::after { width: 88%; height: 88%; opacity: .5; }
+  .art-inner { font-size: clamp(30px, 6vh, 72px); color: color-mix(in srgb, var(--primary) 85%, white); opacity: .82; }
+  .meta { min-width: 0; }
+  .meta h2 {
+    margin: 0; font-size: clamp(20px, 3.6vh, 44px); font-weight: 600; line-height: 1.1;
+    letter-spacing: -.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .meta p { margin: 8px 0 0; color: var(--muted); font-size: clamp(11px, 1.7vh, 17px); letter-spacing: .02em; }
+  .lyrics {
+    min-height: 0; max-height: 100%; overflow: hidden; position: relative;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent);
+    font-size: clamp(15px, 2.5vh, 30px); line-height: 1.55; font-weight: 500;
+  }
+  .lyric-line { margin: 0 0 .7em; color: color-mix(in srgb, var(--text) 34%, transparent); transition: color .4s; }
+  .lyric-line.active { color: color-mix(in srgb, var(--text) 72%, transparent); }
+  .word { transition: color .18s, text-shadow .18s, opacity .18s; opacity: .72; }
+  .word.active {
+    color: var(--primary); opacity: 1; font-weight: 700;
+    text-shadow: 0 0 18px color-mix(in srgb, var(--primary) 65%, transparent);
+  }
+  .word.past { opacity: .38; }
+  .lyrics.plain { color: color-mix(in srgb, var(--text) 45%, transparent); white-space: pre-wrap; }
+  .hidden-lyrics { color: var(--muted); font-size: 14px; opacity: .6; }
+
+  @media (max-width: 720px) {
+    .content { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 12px; padding-top: 54px; }
+    .art { display: none; }
+    .meta { grid-row: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+  <section id="pairScreen" class="screen active">
+    <div class="pair-card">
+      <div class="brand">AURA <span>MUSIC</span></div>
+      <h1>Cinematic Receiver</h1>
+      <p class="sub">Open the receiver on this screen, then start pairing from your phone. Nothing is streamed here except visual state.</p>
+      <form id="pairForm" autocomplete="off">
+        <label>Pairing code
+          <input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                 placeholder="000000" aria-label="Six digit pairing code" required>
+        </label>
+        <label>Receiver name
+          <input id="name" name="name" maxlength="60" value="Laptop" aria-label="Receiver name" required>
+        </label>
+        <button id="pairButton" type="submit">Pair device</button>
+        <p id="pairError" class="error" role="alert"></p>
+      </form>
+      <p class="honest">Audio stays on your phone</p>
+    </div>
+  </section>
+
+  <section id="stageScreen" class="screen">
+    <div id="stage" class="stage aspect-16-9">
+      <canvas id="fx" aria-hidden="true"></canvas>
+      <div class="vignette"></div>
+      <header class="topbar">
+        <div class="status"><span id="statusDot"></span><span id="statusText">Waiting for your phone…</span></div>
+        <div class="aspect-picker" role="group" aria-label="Stage aspect ratio">
+          <button type="button" data-aspect="aspect-16-9" class="on">16:9</button>
+          <button type="button" data-aspect="aspect-16-10">16:10</button>
+          <button type="button" data-aspect="aspect-21-9">21:9</button>
+        </div>
+      </header>
+      <div class="content">
+        <div class="art" id="art"><div class="art-inner">&#9835;</div></div>
+        <div class="meta">
+          <h2 id="title">Waiting for a track</h2>
+          <p id="artist">—</p>
+        </div>
+        <div id="lyrics" class="lyrics"><span class="hidden-lyrics">Lyrics appear once your phone publishes a song.</span></div>
+      </div>
+      <footer class="foot"><span>AURA MUSIC · Cinematic Receiver</span><span>Audio stays on your phone</span></footer>
+    </div>
+  </section>
+
+  <script src="/receiver.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "avoid": [
+    "Poweramp",
+    "MO Agamy",
+    "متروليست",
+    "Vivi Music",
+    "Vivimusic",
+    "Developed by Jordan",
+    "Created & Owned by Jordan",
+    "Crafted with passion by Jordan",
+    "Jordan for creating",
+    "T-Boyke"
+  ],
+  "domains": [
+    "echomusic.fun",
+    "echomusic.app",
+    "share.echomusic.fun",
+    "canvas.echomusic.fun",
+    "320kbps.echomusic.fun",
+    "github.com/EchoMusicApp",
+    "metroserverx.meowery.eu"
+  ],
+  "colors": [],
+  "notes": {
+    "identity": "AURA MUSIC",
+    "approved_phrases": [
+      "AURA MUSIC",
+      "Made for AURA MUSIC",
+      "Built for the AURA MUSIC community",
+      "© 2026 AURA MUSIC. All rights reserved."
+    ],
+    "scope": "The sweep covers the shipped tree. The replica/ planning and reference-evidence folder is intentionally excluded by the sweep tool.",
+    "why_feature_names_are_not_in_avoid": "The sweep matches identifiers, file names and comments as well as user-facing text. Legacy compact terms such as EchoMusic, echomusic, Echo Music folder paths, chomusic fragments inside echomusic identifiers, and iad1tya are documented exceptions; user-facing values were checked separately with targeted scans and fixed.",
+    "legacy_identity_terms_documented_as_exceptions": [
+      "Echo-Music",
+      "EchoMusic",
+      "echomusic",
+      "chomusic inside echomusic identifiers",
+      "Metrolist",
+      "iad1tya"
+    ],
+    "exception_policy": "Those terms remain only inside preserved GPLv3/Apache/third-party notices, build paths, package, module, resource-id, storage-key, widget-intent, ProGuard and JNI identifiers. Renaming them would break upgrades, widgets, shortcuts, local data and builds. They are inventoried in replica/brand.md."
+  }
+}

@@ -1,0 +1,78 @@
+/* AURA MUSIC 2.0 design tokens — AMOLED, glass, cinematic. */
+:root {
+  /* Surfaces */
+  --bg: #000000;
+  --s0: #05060a;
+  --s1: #0b0c12;
+  --s2: #12141d;
+  --s3: #1a1d28;
+  --s4: #242838;
+
+  /* Text */
+  --fg: #f2f5ff;
+  --muted: rgba(226, 232, 240, 0.62);
+  --faint: rgba(226, 232, 240, 0.38);
+  --dim: rgba(226, 232, 240, 0.22);
+
+  /* Lines & glass */
+  --line: rgba(255, 255, 255, 0.10);
+  --line-soft: rgba(255, 255, 255, 0.055);
+  --glass: rgba(255, 255, 255, 0.045);
+  --glass-strong: rgba(255, 255, 255, 0.075);
+
+  /* Signature Aura accents */
+  --primary: #ed5564;
+  --cyan: #6ce5ff;
+  --violet: #b388ff;
+  --green: #34d399;
+  --gold: #f5c86b;
+  --accent: var(--cyan);
+  --accent-2: var(--violet);
+
+  /* Gradients */
+  --aura-grad: linear-gradient(120deg, #ed5564 0%, #b388ff 46%, #6ce5ff 100%);
+  --cinema-grad: radial-gradient(120% 80% at 15% 0%, rgba(237, 85, 100, .16), transparent 55%),
+                 radial-gradient(90% 70% at 100% 10%, rgba(108, 229, 255, .12), transparent 55%),
+                 radial-gradient(80% 60% at 50% 100%, rgba(179, 136, 255, .10), transparent 60%);
+
+  /* Type */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk", var(--font-sans);
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  /* Space scale (4px base) */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+
+  /* Radius */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --shadow-sm: 0 4px 20px rgba(0, 0, 0, .4);
+  --shadow-md: 0 16px 48px rgba(0, 0, 0, .55);
+  --shadow-lg: 0 32px 90px rgba(0, 0, 0, .72);
+  --glow: 0 0 28px rgba(108, 229, 255, .28);
+
+  /* Layout */
+  --sidebar-w: 252px;
+  --topbar-h: 68px;
+  --mini-h: 78px;
+  --player-pad: clamp(16px, 4vw, 48px);
+
+  /* Motion */
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --ease-soft: cubic-bezier(.4, 0, .2, 1);
+  --t-fast: 140ms;
+  --t-med: 260ms;
+  --t-slow: 480ms;
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-fast: 0ms; --t-med: 0ms; --t-slow: 0ms; }
+}

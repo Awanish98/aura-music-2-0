@@ -1,0 +1,57 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.kotlin/
+
+# Mac
+.DS_Store
+
+# build folders
+build/
+app/build/
+androidApp/build/
+composeApp/build/
+cast/build/
+cast-empty/build/
+crashlytics/build/
+crashlytics-empty/build/
+lastfm/build/
+lastfm-empty/build/
+*/build/
+
+# Gradle
+.gradle/
+
+# Kotlin Multiplatform
+/.kotlin
+
+# Logs
+*.log
+
+# Reference source repositories (never commit)
+BitChord-main/
+ArchiveTune-main/
+PixelMusic-main/
+
+# Signing material and local environment (never commit)
+keystore.jks
+*.jks
+*.keystore
+local.properties
+/local.properties
+
+# Built binaries and website download payloads (build them locally)
+*.apk
+*.aab
+website/downloads/
+
+# Python backend caches
+__pycache__/
+*.py[cod]
