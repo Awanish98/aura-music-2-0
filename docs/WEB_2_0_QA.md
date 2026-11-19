@@ -16,9 +16,9 @@ or fabricated responses.
 | Check | Result |
 |---|---|
 | `python backend/test_server.py` | 10 tests, OK |
-| `python backend/test_music.py` | 12 tests, OK (includes exact-word LRC, approximate LRC, lyric query normalization, candidate scoring, Range rejection, APK hash) |
+| `python backend/test_music.py` | 13 tests, OK (includes exact-word LRC, approximate LRC, lyric query normalization, unknown-uploader artist derivation, candidate scoring, Range rejection, APK hash) |
 | `python -m py_compile backend/music.py backend/server.py` | OK |
-| `node --check` on all `website/js/*.js` and `website/sw.js` | OK, zero failures |
+| `node --check` on `website/config.js`, `website/sw.js` and all `website/js/*.js` | OK, zero failures |
 | Temporary probe scripts `backend/_probe_*.py` | Removed |
 
 ## Catalog and streaming (real data)
@@ -51,6 +51,14 @@ or fabricated responses.
 - Look picker exposed **16 options** (`AUTO` + the 15 preserved AURA looks); AUTO selected a mood look from the real track.
 - Line-only LRC words are marked `approximate` by the parser and the UI shows the explicit note “Word timing is estimated from line timing for this track; line timing is exact.” Exact word-synced tracks do **not** show that note.
 
+### Standalone LyricsPlay and Android-equivalent views
+
+- Opening `#/lyrics` with no playing track now shows a real catalog search in the overlay instead of the old “No track playing” dead end. Searching “Never Gonna Give You Up” returned 8 real results; selecting one loaded **58 lines / 370 word spans** before playback started.
+- The provider result labelled `Rick Astley - Never Gonna Give You Up` initially exposed `Unknown artist`, which produced a false lyrics 404. `lyrics_query()` now derives the artist from the `Artist - Title` prefix and drops unknown artists; the live API returns `Never Gonna Give You Up` / `Rick Astley`, 58 lines / 370 words, `hasWordSync: true`.
+- Two dedicated view modes were added without changing the 15-song look catalog: **Cinematic** (`data-look="cinema"`, letterbox bars, warm film halo) and **AMOLED** (`data-look="amoled"`, pure-black background, hidden art blur, white words with minimal violet bloom). Both rendered all 58 lines / 370 words; computed AMOLED background was `rgb(0, 0, 0)` with `background-image` display `none`.
+- “Play this song” in the preview footer started real playback, swapped the preview footer for the seek bar, kept the same 58/370 lyric DOM through the track-change reload, and word highlighting followed seeks (at 30 s: line 2, “A full commitment's what I'm thinkin' of”, one current word).
+- Glass material pass verified in computed styles: sidebar `blur(34px) saturate(1.55)`, panels `blur(28px) saturate(1.55)`, button transitions present, and `scrollWidth === clientWidth` on both `/lyrics` and `/settings`.
+
 ## Views and stateful flows
 
 | Route / flow | Observed |
@@ -81,15 +89,19 @@ the shipped file matches `F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97
 ## Real bugs found and fixed during QA
 
 1. Direct `#/search?q=…` never ran the query → `router.js` now calls `runSearch(q)` and `views.js` records `loadedQuery`.
-2. Service worker cache-first served stale JS after deploys → static assets are network-first with cache fallback; version bumped to `aura-web-2.0.1`.
+2. Service worker cache-first served stale JS after deploys → static assets are network-first with cache fallback; version bumped to `aura-web-2.0.2`.
 3. Backend static cache keyed only by path served stale edits → key now includes file mtime and size.
 4. Seek range (0–1000) was passed as seconds to a millisecond API → fixed to use `state.player.duration`.
 5. Search filter chips used values that did not match the filter code (`videos` instead of `long`/`quick`) → corrected values and labels.
 6. Title cleanup left an unmatched `)` (e.g. `… Remaster)`) → unmatched leading/trailing brackets are now stripped.
 7. Lyrics returned a false 404 for provider titles with an artist prefix / `Remaster` → `lyrics_query()` normalizes the lookup and LRCLIB `/api/search` provides a scored fallback; live lookup now returns genuine word sync.
+8. LyricsPlay with no playing track was a dead end → the overlay now searches the real catalog and previews lyrics without starting playback; a stale-request token stops older responses from overwriting newer selections.
+9. YouTube search labels with `Unknown artist` broke lyric lookup → the backend derives the artist from `Artist - Title` and omits unknown artists; 58-line word sync now loads from the standalone search path.
+10. The Cinematic/AMOLED views existed only as one unused CSS rule → they are now selectable modes with complete styling, badges, focus handling and preserved 15-look catalog.
 
-Two stale 404 console entries from the pre-fix lyric title remain in the tab's
-console history; the current request succeeds and no current 4xx/5xx was observed.
+One stale provider `502` from an early search retry remains in the tab's console
+history; the successful retry and every subsequent LyricsPlay/playback request
+returned no current errors.
 
 ## Genuine limitations
 
@@ -100,4 +112,4 @@ console history; the current request succeeds and no current 4xx/5xx was observe
 - Static `/downloads/*.apk` requests return 200 with the full body rather than 206; the `/api/download/apk` endpoint does support Range. Downloads work, but resumable downloads through the static URL are not implemented.
 - `browser.network.list` failed with a serialization error in this harness, so request verification used DOM state, console messages, direct `fetch` probes and backend logs instead of the request list.
 - Desktop-width visual emulation was unavailable in this harness (fixed 538 px viewport). Desktop layout was verified from the CSS breakpoint rules plus the earlier legacy 1440 px pass, not from a live screenshot of the new app shell.
-- Deployment to Netlify and Play Console still requires the user's credentials/access.
+- GitHub Pages, Render and Play Console publishing still require the user's credentials/access. The prepared workflow, Blueprint, Dockerfile and release URLs are in the repository.

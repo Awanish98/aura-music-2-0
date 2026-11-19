@@ -29,6 +29,8 @@
   <link rel="stylesheet" href="./styles/components.css">
   <link rel="stylesheet" href="./styles/player.css">
   <link rel="stylesheet" href="./styles/lyrics.css">
+  <link rel="stylesheet" href="./styles/premium.css">
+  <script src="./config.js"></script>
 </head>
 <body>
   <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -101,7 +103,7 @@
 
   <section class="player-overlay" id="playerOverlay" aria-label="Full screen player" hidden></section>
 
-  <section class="lyrics-overlay" id="lyricsOverlay" aria-label="LyricsPlay" hidden></section>
+  <section class="lyrics-overlay" id="lyricsOverlay" role="dialog" aria-modal="true" aria-label="LyricsPlay" tabindex="-1" hidden></section>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="loading-veil" id="loadingVeil" aria-hidden="true"><span></span></div>

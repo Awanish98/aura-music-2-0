@@ -18,8 +18,9 @@ read or exposed to the browser.
 ## Structure
 
 - `index.html` — app shell, navigation, player and LyricsPlay overlays
+- `config.js` — backend API base, GitHub Release URLs; override with `?api=…`
 - `js/` — state, storage, API client, router, player/visualizer, lyrics and views
-- `styles/` — AMOLED design tokens, layout, components, player and lyrics CSS
+- `styles/` — AMOLED tokens, layout, components, player, lyrics and premium glass/motion CSS
 - `manifest.webmanifest`, `sw.js`, icons — installable PWA; static shell only is cached
 - `legacy/` — archived original landing page (kept for reference)
 - `downloads/` — signed APK/AAB payloads (generated locally, not committed)
@@ -36,6 +37,16 @@ Favorites, playlists, history, settings and user-imported local audio stay on th
 device. Copyrighted streamed audio is never cached. There is no account or cloud
 sync backend, so the web app is local-first by design.
 
+LyricsPlay can search and preview real word-synced lyrics before playback, and
+offers two dedicated views alongside the 15 preserved looks: **Cinematic** and
+**AMOLED**. Words and timestamps always come from the provider unchanged.
+
 The download page ships the verified signed **1.4.6 / 167** binary; the 2.0 brand
 applies to this web experience only. APK/AAB files are deliberately absent from
-Git and must be copied into `website/downloads/` at deploy time.
+Git; production downloads use the `v1.4.6` GitHub Release URLs in `config.js`.
+
+## Production
+
+GitHub Pages serves this folder via `.github/workflows/deploy-pages.yml`; the
+Python backend is deployed with `render.yaml` and `Dockerfile`. In production the
+frontend calls `https://aura-music-2-0-api.onrender.com/api` unless overridden.

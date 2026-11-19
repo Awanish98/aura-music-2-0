@@ -1,0 +1,14 @@
+.git
+.github
+__pycache__
+*.pyc
+*.apk
+*.aab
+website/downloads
+AURA-Music-2.0-Publish
+Echo-Music
+docs
+replica
+reference
+licenses
+*.zip

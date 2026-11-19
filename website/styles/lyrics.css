@@ -110,7 +110,7 @@
 .lyrics-stage[data-look="orbit"] .lyric-word.current { text-shadow: 0 0 18px var(--l-glow); }
 
 .lyrics-stage[data-look="tidal"] .lyric-line { font-weight: 600; }
-.lyrics-stage[data-look="tidal"] .lyric-line.active { transform: translateY(calc(sin(1) * 2px)); }
+.lyrics-stage[data-look="tidal"] .lyric-line.active { transform: translateY(-2px); }
 
 .lyrics-stage[data-look="depth"] .lyric-line.active {
   text-shadow: 1px 1px 0 rgba(255,255,255,.25), 2px 2px 0 rgba(255,255,255,.15), 4px 4px 12px rgba(0,0,0,.8);

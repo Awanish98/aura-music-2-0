@@ -425,13 +425,17 @@ def lyrics_query(title: str, artist: str) -> tuple[str, str]:
     """
     clean = clean_title(title)
     clean_artist = clean_title(artist)
+    unknown_artist = (not clean_artist) or clean_artist.casefold().startswith("unknown")
     prefix = LYRIC_ARTIST_PREFIX_RE.match(clean)
     if prefix:
         lead = prefix.group(1).strip(" -|\"'“”")
-        if lead and clean_artist and (
+        matches = clean_artist and (
             lead.casefold() in clean_artist.casefold() or clean_artist.casefold() in lead.casefold()
-        ):
+        )
+        if lead and (matches or unknown_artist):
             clean = clean[prefix.end():].strip()
+            if unknown_artist:
+                clean_artist = lead
     previous = None
     while previous != clean:
         previous = clean
@@ -510,6 +514,8 @@ def get_lyrics(title: str, artist: str, duration_ms: int = 0) -> dict[str, Any]:
             return cached[1]
 
     lookup_title, lookup_artist = lyrics_query(title, artist)
+    if lookup_artist.casefold().startswith("unknown"):
+        lookup_artist = ""
     params: dict[str, Any] = {"track_name": lookup_title}
     if lookup_artist:
         params["artist_name"] = lookup_artist
@@ -561,6 +567,20 @@ def apk_info(web_root: str | None = None) -> dict[str, Any]:
     downloads = os.path.join(root, "downloads")
     apk = os.path.join(downloads, "AURA-Music-UniversalGms-Release.apk")
     aab = os.path.join(downloads, "AURA-Music-UniversalGms-Release.aab")
+    apk_hash = "F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97158148AB16"
+    aab_hash = "6C9F33EF5B55B53B4C4A8B136601357D1CF45F8AFF9FC1451AE78F55C07305D3"
+    release_base = os.environ.get(
+        "AURA_RELEASE_BASE",
+        "https://github.com/Awanish98/aura-music-2-0/releases/download/v1.4.6",
+    ).rstrip("/")
+    release_urls = {
+        "apk": os.environ.get("AURA_APK_URL", f"{release_base}/AURA-Music-UniversalGms-Release.apk"),
+        "aab": os.environ.get("AURA_AAB_URL", f"{release_base}/AURA-Music-UniversalGms-Release.aab"),
+    }
+    fallback_meta = {
+        "apk": {"file": os.path.basename(apk), "bytes": 149_665_142, "sha256": apk_hash},
+        "aab": {"file": os.path.basename(aab), "bytes": 186_386_586, "sha256": aab_hash},
+    }
     info = {
         "brand": "AURA MUSIC 2.0",
         "appName": "AURA MUSIC",
@@ -569,7 +589,7 @@ def apk_info(web_root: str | None = None) -> dict[str, Any]:
         "versionCode": 167,
         "releaseDate": "2026-11-19",
         "minAndroid": 8,
-        "sha256": "F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97158148AB16",
+        "sha256": apk_hash,
         "changelog": [
             "15 Premium Lyrics looks with AUTO mood matching and CODE POETRY mode",
             "3D PATTERN visualizer, canvas and album-art reactive backgrounds",
@@ -579,17 +599,24 @@ def apk_info(web_root: str | None = None) -> dict[str, Any]:
         "assets": {},
     }
     for label, path in (("apk", apk), ("aab", aab)):
+        fallback = fallback_meta[label]
         if os.path.isfile(path):
             size = os.path.getsize(path)
             digest = hashlib.sha256()
             with open(path, "rb") as handle:
                 for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                     digest.update(chunk)
-            info["assets"][label] = {
-                "file": os.path.basename(path),
-                "url": f"/downloads/{os.path.basename(path)}",
-                "bytes": size,
-                "sizeMb": round(size / (1024 * 1024), 1),
-                "sha256": digest.hexdigest().upper(),
-            }
+            url = os.environ.get(f"AURA_{label.upper()}_URL") or f"/downloads/{os.path.basename(path)}"
+            sha = digest.hexdigest().upper()
+        else:
+            size = fallback["bytes"]
+            url = release_urls[label]
+            sha = fallback["sha256"]
+        info["assets"][label] = {
+            "file": fallback["file"],
+            "url": url,
+            "bytes": size,
+            "sizeMb": round(size / (1024 * 1024), 1),
+            "sha256": sha,
+        }
     return info

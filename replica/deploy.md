@@ -1,105 +1,82 @@
-# Deploy checklist: AURA MUSIC
+# Deploy checklist: AURA MUSIC 2.0
 
-Date: 2026-11-19  Commit: `66fe8db` (nested `Echo-Music` repo; web app committed locally, not pushed)  Go from user: **yes** — "ab deploy krna hai"; host = Netlify, Play Console account = yes, domain = free Netlify subdomain.
+Date: 2026-11-19 · Repository: <https://github.com/Awanish98/aura-music-2-0> ·
+Publish export: `P:\youtube-creat\AURA-Music-2.0-Publish`.
 
-## Decisions from the user
+## Architecture
 
-| Choice | Answer |
-|---|---|
-| Website host | **Netlify** (static, drag-and-drop or CLI) |
-| Play Console developer account | **Yes** ($25 already paid by user) |
-| Domain | **Free Netlify subdomain** — placeholder `https://aura-music.netlify.app` is already in `index.html` canonical + OG tags |
+| Part | Host | Purpose |
+|---|---|---|
+| `website/` | GitHub Pages | Static PWA shell, player UI, LyricsPlay, settings, APK page |
+| `backend/` | Render (Docker, free web service) | Real catalog, Range audio proxy, LRCLIB lyrics, APK metadata |
+| Signed APK/AAB | GitHub Release `v1.4.6` | Working downloads from static hosting |
+| Library/settings | Browser `localStorage` | Local-first persistence; no account backend exists |
 
-> Account login, domain claiming and the actual publish are done by the user. No credentials, card or live key was entered by the agent.
+The static site alone cannot search, stream or load lyrics. `website/config.js`
+points the frontend at `https://aura-music-2-0-api.onrender.com/api` in production
+and at `http://127.0.0.1:8787/api` on localhost. A one-off override is available
+with `?api=https://your-backend/api`, which is stored in `localStorage` under
+`aura2:v1:apiBase`. No token, cookie or private credential is ever placed in the frontend.
 
-## Preflight (all must pass)
+## Files prepared
 
-- [x] **e2e suite green:** Backend `test_server.py` 10/10 + `test_music.py` 12/12 OK; all web JS passes `node --check`. Full browser click-through of the rebuilt web app is recorded in `docs/WEB_2_0_QA.md`: 24 real search results, 206 Range audio stream with real playback to 213 s, 58 LRCLIB lines / 370 exact word spans, 31 Music Flow tracks, all routes/state flows, keyboard shortcuts, mobile layout and a 149,665,142-byte real APK download. No current 4xx/5xx was observed; two stale pre-fix lyric 404 entries remain only in the QA tab's console history.
-- [x] **no open S1 or S2 bugs:** 0 unit-test failures/errors/skips (41 XML suites, 211 tests across `app` + `core`; re-verified after the final 15-look Premium Lyrics and full-screen CODE POETRY renderer/overlay edits); backend 10/10 OK; device smoke test on OnePlus A6010 passed all 9 lyric modes, Premium Lyrics AUTO/manual, rebuilt CODE POETRY, 3D PATTERN, no app-attributed FATAL/ANR/wrong-thread errors.
-- [x] **parity:** N/A — the only `features.csv` in the tree is the replica-recon pack's Calendly example, not an AURA MUSIC matrix. Feature acceptance was verified directly on device instead: CODE POETRY, 15-look Premium Lyrics, 3D visualizer, glassmorphism, real 3D effects.
-- [x] **rebrand sweep clean:** `python .claude\skills\replica-brand\sweep.py . --config replica\brand.json --json` → `[]` (exit 0). `replica/brand-sweep-report.json` = `[]`.
-- [x] **store listing passes:** `python .claude\skills\replica-launch\listing.py replica\launch\listing.json` → 0 errors, 2 warnings (intentional all-caps "AURA MUSIC" / "AUTO"). Title 25/30, short 75/80, full 1436/4000.
-- [x] **production build passes:** signed `assembleUniversalGmsRelease bundleUniversalGmsRelease` → `BUILD SUCCESSFUL` after the 15-look Premium Lyrics redesign, `lintVitalUniversalGmsRelease` clean after removing the WorkManager startup initializer (app implements `Configuration.Provider`). R8/L8 Kotlin-metadata warnings are pre-existing and non-blocking.
-- [x] **privacy policy and terms live, every processor listed:** `website/privacy.html` + `website/terms.html`, linked from every page footer. Privacy lists Google Fonts, optional Groq via self-hosted backend, user-chosen streaming providers, hosting/CDN. No ads/analytics/crash SDKs; app also has `Echo-Music/PRIVACY_POLICY.md` for Play Console.
-- [x] **account deletion works:** N/A — no account system exists (privacy policy section 1); uninstall/clear-data removes all local state.
-- [x] **favicon, titles, OG image are ours:** AURA orbital mark generated fresh with PIL — `favicon.ico`, `favicon-192.png`, `favicon-512.png`, `apple-touch-icon.png`, `og-image.png` (1200×630, no third-party logo). Titles + canonical/OG tags in every page.
+- `.github/workflows/deploy-pages.yml` — builds `_site/` from `website/` and deploys with `actions/deploy-pages@v4`.
+- `render.yaml` — Render Blueprint for `aura-music-2-0-api`, free plan, Docker, health check `/api/health`.
+- `Dockerfile` — Python 3.12 slim + `yt-dlp` + Node JS runtime, binds `0.0.0.0:10000`.
+- `.dockerignore` — keeps binaries, caches and nested repos out of the image.
+- `website/config.js` — API base and GitHub Release asset URLs.
+- `backend/music.py` — APK metadata falls back to release URLs when local binaries are absent on the host.
 
-### Release package verified
+## Preflight (all local checks green)
+
+- [x] `python backend/test_server.py` — 10 tests, OK.
+- [x] `python backend/test_music.py` — 13 tests, OK (new: unknown-uploader artist derivation for lyrics).
+- [x] `python -m py_compile backend/music.py backend/server.py` — OK.
+- [x] `node --check` on `website/config.js`, `website/sw.js` and all `website/js/*.js` — OK.
+- [x] Browser QA: 58 lines / 370 exact word spans rendered before playback, in Cinematic and AMOLED views; active line/word tracking at 30 s; playback started from LyricsPlay preview and lyrics survived the track-change reload.
+- [x] Glass materials verified in computed styles: sidebar `blur(34px) saturate(1.55)`, panels `blur(28px) saturate(1.55)`, no horizontal overflow at desktop width.
+- [x] Rebrand sweep: `python .claude/skills/replica-brand/sweep.py . --config replica/brand.json --json` → `[]`.
+- [x] Store listing lint: 0 errors, 2 intentional all-caps warnings.
+- [x] Signed release verified: valid v2 signature, cert SHA-256 `740963cf50ba9ed77b0c2fc91a91d02c1e0fe9fec15dc8342dc5911ceec74cd3`, 16 KB page alignment clean.
+
+## Release package
 
 | Check | Result |
 |---|---|
 | Package / version | `echo.music.iad1tya`, versionCode `167`, versionName `1.4.6` |
-| APK signature | valid, 1 signer, cert SHA-256 `740963cf50ba9ed77b0c2fc91a91d02c1e0fe9fec15dc8342dc5911ceec74cd3` (upload key `auraupload`) |
-| APK SHA-256 | `F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97158148AB16` (149665142 bytes) |
-| AAB SHA-256 | `6C9F33EF5B55B53B4C4A8B136601357D1CF45F8AFF9FC1451AE78F55C07305D3` (186386586 bytes) |
+| APK SHA-256 | `F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97158148AB16` (149,665,142 bytes) |
+| AAB SHA-256 | `6C9F33EF5B55B53B4C4A8B136601357D1CF45F8AFF9FC1451AE78F55C07305D3` (186,386,586 bytes) |
 | 16 KB pages | zipalign `-c -P 16 -v 4` exit 0; ELF `BAD_COUNT 0`; AAB `PAGE_ALIGNMENT_16K` |
 
-Canonical artifacts: `AURA-Music-UniversalGms-Release.apk` / `.aab` (repo root) and identical copies in `website/downloads/` (hashes match).
+APK/AAB are gitignored. They must be attached to the `v1.4.6` GitHub Release so
+the download page works from GitHub Pages.
 
-## Production services
+## Deployment steps
 
-No database, Stripe, OAuth, outbound email or analytics. The **Python backend is required** for the web app's catalog, Range-proxied audio and lyrics; it is self-hosted by the user and needs `yt-dlp` plus a Node JS runtime. No account, API key, cookie or po-token is used: `GROQ_API_KEY` is optional and never in the web frontend. Netlify itself needs no live keys.
-
-**Outstanding before store publish (not a deploy blocker):** GPLv3 source-availability / third-party OFL notice review. The app is GPLv3; ensure a source offer is present in the Play listing or app.
-
-## Backend requirement for the web app
-
-`website/` is a static shell, but Home/Discover, Search, player streams and
-LyricsPlay call the same-origin `/api/*` endpoints implemented in `backend/`.
-A pure Netlify static deploy will render the UI but **cannot play music or load
-lyrics** without that backend. Either run `backend/server.py` on a host reachable
-by the deployed site and point the frontend at it, or deploy the Python backend
-on a host that supports it (e.g. a small container/VM behind HTTPS). Do not put
-private keys or cookies in frontend code to work around this.
-
-## Host and domain — Netlify (user steps)
-
-The site has no build step. Two ways, both done by the user in their own Netlify account:
-
-### Option A — Netlify Drop (fastest)
-
-1. Log in at <https://app.netlify.com> (or use drop without login at <https://app.netlify.com/drop>).
-2. Drag the **`P:\youtube-creat\website`** folder onto the dropzone.
-3. Set the site name to **`aura-music`** → live URL `https://aura-music.netlify.app`.
-4. Build settings: **no build command**, publish directory **`.`** (root).
-5. Open the live URL and confirm: hero loads, style lab shows 15 looks + AUTO, both download buttons work, Privacy/Terms links work.
-
-> ⚠️ **Large-file check:** the APK is ~150 MB and the AAB ~186 MB. If Netlify rejects the upload because of a per-file size limit, use **Option B**.
-
-### Option B — site on Netlify + downloads from GitHub Releases (recommended if A fails)
-
-1. Deploy the site with the `downloads/` folder **removed** from the folder you drop (rename it temporarily).
-2. Create a GitHub release for the repo and attach `AURA-Music-UniversalGms-Release.apk` and `.aab` (GitHub Releases allows multi-hundred-MB assets).
-3. In `website/index.html`, change the two download `href`s:
-   - `downloads/AURA-Music-UniversalGms-Release.apk` → `https://github.com/<you>/<repo>/releases/download/v1.4.6/AURA-Music-UniversalGms-Release.apk`
-   - `downloads/AURA-Music-UniversalGms-Release.aab` → the matching `.aab` URL
-4. Redeploy by dragging the updated folder onto the site's **Deploys → dropzone**.
-
-### Custom domain (only if user later buys one)
-
-| record | name | value |
-|---|---|---|
-| A | @ | Netlify apex IP shown in Domain settings |
-| CNAME | www | `<site>.netlify.app` |
-| TXT | @ | verification value if Netlify asks |
-
-Pick one canonical host and redirect the other; HTTPS is automatic. Update the canonical/OG tags in `index.html` and the text in `og-image.png` when the final domain is known.
+1. Push the publish export to `origin/main`:
+   `git -C P:\youtube-creat\AURA-Music-2.0-Publish push origin main`
+2. Enable Pages for workflow builds:
+   `gh api -X PUT /repos/Awanish98/aura-music-2-0/pages -f build_type=workflow`
+3. Watch the Pages action and confirm <https://awanish98.github.io/aura-music-2-0/>.
+4. In Render, create a new **Blueprint** from the repository and apply `render.yaml`,
+   or create a Docker web service named `aura-music-2-0-api` with the same env vars.
+5. Confirm `GET https://aura-music-2-0-api.onrender.com/api/health` returns 200.
+   On a cold free-tier start this can take ~50 s; the frontend retries once.
+6. Load the Pages URL, confirm `BACKEND ONLINE`, search a real song, play it and
+   open LyricsPlay in Cinematic and AMOLED views.
+7. If the Render service name changes, update `website/config.js` or open the site
+   once with `?api=https://actual-service.onrender.com/api`.
 
 ## Play Console (user steps)
 
 1. Sign in at <https://play.google.com/console> → **Create app** → name **AURA MUSIC: Lyric Visuals**, default language English (US).
 2. **Production → Create new release** → upload `P:\youtube-creat\AURA-Music-UniversalGms-Release.aab` (versionCode 167, versionName 1.4.6).
-3. Paste the store text from `replica/launch/listing.json` (`google_play` block) into title / short / full description.
-4. **App content** questionnaire: declare the microphone permission and the optional backend; link the hosted privacy policy (`https://aura-music.netlify.app/privacy.html`); select "No" for ads and for targeted audience/children.
-5. Data safety form: "Data collected" = none uploaded; local processing only; optional state sent to user's own backend. Mirrors section 4 of the privacy policy.
-6. Add screenshots + a 512×512 feature graphic (the `favicon-512.png` brand mark can be reused).
-7. **Internal testing** first → opt-in via Play Store testing link → confirm install + launch on a phone → then **Production → Roll out**.
-8. Keep the upload keystore `Echo-Music/keystore.jks` (alias `auraupload`) safe; Play App Signing will enroll with this upload key.
+3. Paste the store text from `replica/launch/listing.json` (`google_play` block).
+4. **App content**: declare the microphone permission and optional backend; link the hosted privacy policy; select “No” for ads and children.
+5. **Data safety**: no data uploaded; local processing only; optional state sent to the user’s own backend.
+6. Add screenshots and a 512×512 feature graphic (`favicon-512.png` is ours).
+7. Internal testing first, then Production rollout. Keep `Echo-Music/keystore.jks` safe.
 
-## Watch it in the first week
-
-- Netlify: **Deploys** tab for failed builds; browser console on the live URL; download-click test from a phone (not just desktop).
-- Play Console: **Android vitals** (ANRs / crashes), review the "App content" and "Data safety" declarations for any policy warning, and replies to user reviews.
-- If Option B is used: check the GitHub release asset URLs still return 200 after any edit.
-
-**Status:** everything the agent can do locally is complete and verified. Nothing was published — the user performs the Netlify drag-and-drop and the Play Console upload/rollout.
+**Status:** all code, configs and local verification are complete. Publishing the
+Render service, enabling Pages and the Play Console rollout require the user’s
+GitHub/Render/Google accounts. No credentials were entered or stored by the agent.

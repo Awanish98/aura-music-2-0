@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-async function once(path, { signal, timeout = 45000, method = 'GET', body } = {}) {
+async function once(path, { signal, timeout = 60000, method = 'GET', body } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const onAbort = () => controller.abort();

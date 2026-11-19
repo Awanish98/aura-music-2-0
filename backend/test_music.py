@@ -72,6 +72,12 @@ class MusicParsingTests(unittest.TestCase):
             ("Never Gonna Give You Up", "Rick Astley"),
         )
 
+    def test_lyrics_query_derives_artist_from_unknown_upload(self) -> None:
+        self.assertEqual(
+            music.lyrics_query("Rick Astley - Never Gonna Give You Up", "Unknown artist"),
+            ("Never Gonna Give You Up", "Rick Astley"),
+        )
+
     def test_pick_lyric_candidate_prefers_synced_near_duration(self) -> None:
         candidates = [
             {"trackName": "Never Gonna Give You Up", "artistName": "Rick Astley",

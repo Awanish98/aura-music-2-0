@@ -2,11 +2,17 @@
 import { state, emit, persistLibrary, persistSettings, isFavorite, toggleFavorite, findTrack, makePlaylist, addToPlaylist, removeFromPlaylist, deletePlaylist, toast } from './state.js';
 import { endpoints } from './api.js';
 import { icon, hydrateIcons } from './icons.js';
-import { LOOKS, setLook } from './lyrics.js';
+import { LOOKS, VIEW_MODES, setLook } from './lyrics.js';
 import { playQueue, playTrack, addToQueue, removeFromQueue, currentTrack, togglePlay, openFullPlayer } from './player.js';
 
 let searchTimer = null;
 let activeNav = '';
+
+const LOOK_OPTIONS = [
+  { name: 'AUTO · Mood', look: 'AUTO', primary: '#ED5564', accent: '#6CE5FF', signature: 'Matches the mood of the playing song' },
+  ...VIEW_MODES.map((mode) => ({ ...mode, name: `${mode.name} view`, look: mode.id })),
+  ...LOOKS,
+];
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -357,17 +363,19 @@ function renderDownloads(root) {
 
 /* -------------------------------------------------------------- APK page */
 function renderDownload(root) {
+  const release = window.AURA_RELEASE_DOWNLOADS || {};
   const apk = state.apk || {
     brand: 'AURA MUSIC 2.0', appName: 'AURA MUSIC', package: 'echo.music.iad1tya',
     versionName: '1.4.6', versionCode: 167, releaseDate: '2026-11-19', minAndroid: 8,
     sha256: 'F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97158148AB16',
     changelog: ['15 Premium Lyrics looks with AUTO mood matching and CODE POETRY', '3D PATTERN visualizer and album-art reactive backgrounds', 'Media3 playback, downloads, Android Auto and Cast', 'Music Flow, recognition, scrobbling and cloud library'],
     assets: {
-      apk: { file: 'AURA-Music-UniversalGms-Release.apk', url: './downloads/AURA-Music-UniversalGms-Release.apk', sizeMb: 142.7, sha256: 'F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97158148AB16' },
-      aab: { file: 'AURA-Music-UniversalGms-Release.aab', url: './downloads/AURA-Music-UniversalGms-Release.aab', sizeMb: 177.8 },
+      apk: { file: 'AURA-Music-UniversalGms-Release.apk', url: release.apk || './downloads/AURA-Music-UniversalGms-Release.apk', sizeMb: 142.7, sha256: 'F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97158148AB16' },
+      aab: { file: 'AURA-Music-UniversalGms-Release.aab', url: release.aab || './downloads/AURA-Music-UniversalGms-Release.aab', sizeMb: 177.8 },
     },
   };
-  const a = apk.assets?.apk || {};
+  const a = { ...(apk.assets?.apk || {}) };
+  if (!a.url || a.url.startsWith('/downloads/')) a.url = release.apk || a.url;
   root.innerHTML = `<section class="apk-hero">
       <img class="app-icon" src="./favicon-192.png" alt="AURA MUSIC app icon">
       <div><div class="eyebrow">VERIFIED SIGNED RELEASE</div><h1>${esc(apk.brand)}</h1>
@@ -417,8 +425,8 @@ export async function loadApk() {
 /* -------------------------------------------------------------- settings */
 function renderSettings(root) {
   const s = state.settings;
-  const lookTiles = [{ name: 'AUTO · Mood', look: 'AUTO', primary: '#ED5564', accent: '#6CE5FF' }, ...LOOKS].map((l) => `
-    <button type="button" class="look-tile ${s.lyricLook === l.look ? 'active' : ''}" data-action="set-look" data-value="${l.look}">
+  const lookTiles = LOOK_OPTIONS.map((l) => `
+    <button type="button" class="look-tile ${s.lyricLook === l.look ? 'active' : ''}" data-action="set-look" data-value="${esc(l.look)}" title="${esc(l.signature || '')}">
       <i style="background:linear-gradient(135deg,${l.primary},${l.accent})"></i>${esc(l.name)}</button>`).join('');
   root.innerHTML = `<div class="section-head"><div><div class="eyebrow">PREFERENCES · STORED LOCALLY</div><h1>Settings</h1></div></div>
     <div class="settings-grid">
@@ -483,11 +491,13 @@ export function render(root, path) {
   else if (route === '/settings') renderSettings(root);
   else if (route === '/lyrics') {
     root.innerHTML = `<div class="section-head"><div><div class="eyebrow">PREMIUM LYRICSPLAY</div><h1>Synced, cinematic lyrics</h1></div></div>
-      <p>Open the immersive overlay for the full experience. Lyrics come from LRCLIB with real word timestamps where available.</p>
-      <div class="hero-actions"><button type="button" class="btn primary" data-action="open-lyrics">${icon('lyrics', 17)} Open LyricsPlay</button>
+      <p>Search and preview lyrics before playback, or open the overlay for the song that is playing. Timed words come from LRCLIB; the 15 signature looks and 2 dedicated views never alter the words.</p>
+      <div class="hero-actions"><button type="button" class="btn primary" data-action="open-lyrics">${icon('lyrics', 17)} Find lyrics / open LyricsPlay</button>
         <button type="button" class="btn" data-action="open-full">${icon('waveform', 17)} Full player</button></div>
-      <div class="view-section"><div class="section-head"><h2>15 signature looks</h2></div>
-        <div class="look-grid">${LOOKS.map((l) => `<button type="button" class="look-tile" data-action="set-look" data-value="${l.look}"><i style="background:linear-gradient(135deg,${l.primary},${l.accent})"></i>${esc(l.name)}</button>`).join('')}</div></div>`;
+      <div class="lyric-view-callout"><div><span class="eyebrow">ANDROID-EQUIVALENT VIEWS</span><strong>Cinematic</strong><small>Warm letterbox glow and film-halo type.</small></div>
+        <div><span class="eyebrow">TRUE AMOLED</span><strong>AMOLED</strong><small>Pure black canvas, white words, minimal bloom.</small></div></div>
+      <div class="view-section"><div class="section-head"><h2>15 signature looks + 2 views</h2></div>
+        <div class="look-grid">${LOOK_OPTIONS.map((l) => `<button type="button" class="look-tile ${state.settings.lyricLook === l.look ? 'active' : ''}" data-action="set-look" data-value="${esc(l.look)}" title="${esc(l.signature || '')}"><i style="background:linear-gradient(135deg,${l.primary},${l.accent})"></i>${esc(l.name)}</button>`).join('')}</div></div>`;
   } else if (route.startsWith('/artist/')) renderArtist(root, decodeURIComponent(route.slice(8)));
   else if (route.startsWith('/album/')) renderAlbum(root, decodeURIComponent(route.slice(7)));
   else if (route.startsWith('/playlist/')) renderPlaylist(root, decodeURIComponent(route.slice(10)));
