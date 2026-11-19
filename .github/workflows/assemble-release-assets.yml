@@ -1,0 +1,29 @@
+name: Assemble signed release assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Assemble APK/AAB from verified chunks
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: v1.4.6
+          APK_SHA256: F46917BAE7299546ECD01815728F9DE783F641A9988F56C05D3C97158148AB16
+          AAB_SHA256: 6C9F33EF5B55B53B4C4A8B136601357D1CF45F8AFF9FC1451AE78F55C07305D3
+        run: python scripts/assemble_release_assets.py
