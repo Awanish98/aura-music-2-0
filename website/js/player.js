@@ -335,20 +335,49 @@ function updateMediaSession() {
   }
 }
 
+/* --------------------------------------------------------- audio analysis */
+function ensureAnalyser() {
+  if (analyser || audioCtx) return analyser;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaElementSource(audio);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.72;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  } catch {
+    analyser = null;
+    audioCtx = null;
+  }
+  return analyser;
+}
+
+/** Smoother-than-timeupdate playhead, in milliseconds. */
+export function getPositionMs() {
+  return (audio.currentTime || 0) * 1000;
+}
+
+let energyData = null;
+/** Low-frequency energy (0..1) used by the mobile word-sync engine for beat pops. */
+export function getAudioEnergy() {
+  if (!state.player.playing || audio.paused) return 0;
+  const a = ensureAnalyser();
+  if (!a) return 0;
+  if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+  if (!energyData || energyData.length !== a.frequencyBinCount) energyData = new Uint8Array(a.frequencyBinCount);
+  a.getByteFrequencyData(energyData);
+  let sum = 0;
+  const bins = Math.min(8, energyData.length);
+  for (let i = 0; i < bins; i++) sum += energyData[i];
+  return Math.min(1, (sum / (bins * 255)) * 1.25);
+}
+
 /* -------------------------------------------------------------- visualizer */
 function setupVisualizer() {
   const canvas = document.getElementById('vizCanvas');
   if (!canvas) return;
-  if (!analyser && !audioCtx) {
-    try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioCtx.createMediaElementSource(audio);
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024;
-      source.connect(analyser);
-      analyser.connect(audioCtx.destination);
-    } catch { analyser = null; }
-  }
+  ensureAnalyser();
   if (vizFrame) cancelAnimationFrame(vizFrame);
   const ctx = canvas.getContext('2d');
   const data = new Uint8Array(analyser ? analyser.frequencyBinCount : 64);
@@ -495,7 +524,12 @@ function onKey(event) {
 export function initPlayer() {
   audio.addEventListener('timeupdate', () => { state.player.position = (audio.currentTime || 0) * 1000; updateProgress(); });
   audio.addEventListener('durationchange', () => { if (Number.isFinite(audio.duration)) state.player.duration = audio.duration * 1000; });
-  audio.addEventListener('play', () => { state.player.playing = true; updatePlayState(); audioCtx?.resume(); });
+  audio.addEventListener('play', () => {
+    state.player.playing = true;
+    updatePlayState();
+    const a = ensureAnalyser();
+    if (a && audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+  });
   audio.addEventListener('pause', () => { state.player.playing = false; updatePlayState(); });
   audio.addEventListener('ended', () => {
     if (state.player.repeat === 'one') { audio.currentTime = 0; audio.play(); }

@@ -1,8 +1,12 @@
-/* LyricsPlay — genuine LRCLIB word timings, 15 AURA looks, 2 cinematic views, AUTO mood matching. */
-import { state, emit } from './state.js';
+/* LyricsPlay — genuine LRCLIB word timings.
+ * CLASSIC: 15 AURA looks, Cinematic + AMOLED views, AUTO mood matching.
+ * MOBILE:  word-by-word, beat-reactive engine (AMOLED Word Flow + InstaLrc presets).
+ * Words and timestamps are never altered — only their presentation.
+ */
+import { state, emit, persistSettings } from './state.js';
 import { endpoints } from './api.js';
 import { icon, hydrateIcons } from './icons.js';
-import { currentTrack, seek, playTrack } from './player.js';
+import { currentTrack, seek, playTrack, getPositionMs, getAudioEnergy } from './player.js';
 
 /* name|look|font|primary|accent|glow|speed|signature — exact AURA catalog. */
 const CATALOG_TEXT = `
@@ -32,7 +36,20 @@ export const VIEW_MODES = [
   { id: 'CINEMATIC', name: 'Cinematic', look: 'cinema', primary: '#FFF7ED', accent: '#F5C86B', glow: '#FF8A5B', speed: 0.6, signature: 'Letterboxed light and a warm film halo' },
   { id: 'AMOLED', name: 'AMOLED', look: 'amoled', primary: '#FFFFFF', accent: '#C4B5FD', glow: '#6D28D9', speed: 0.45, signature: 'True black, pure white, minimal bloom' },
 ];
+
+/* The second, mobile-grade engine. Ported from the app's InstaLrcPolicy:
+ * per-word progress drives scale, side-to-side sway and a bass-reactive lift. */
+export const MOBILE_STYLES = [
+  { id: 'M_AMOLED', name: 'AMOLED Word Flow', look: 'm-amoled', primary: '#FFFFFF', accent: '#FFFFFF', glow: '#C4B5FD', speed: 0.45, intensity: 0.35, animation: 'WORD_BY_WORD', signature: 'True black, pure white, word pops on every beat' },
+  { id: 'M_NEON', name: 'Neon Pulse', look: 'm-neon', primary: '#7ED5FF', accent: '#7ED5FF', glow: '#22D3EE', speed: 1, intensity: 1, animation: 'SCALE_IN', signature: 'Oversized cyan type that scales in' },
+  { id: 'M_BOLD', name: 'Bold Typography', look: 'm-bold', primary: '#FFFFFF', accent: '#FFFFFF', glow: '#D8DEE9', speed: 1, intensity: 1, animation: 'SCALE_IN', signature: 'Clean white word-by-word karaoke' },
+  { id: 'M_CHROME', name: 'Chrome Pop', look: 'm-chrome', primary: '#FFFFFF', accent: '#CBD5E1', glow: '#818CF8', speed: 1, intensity: 1, animation: 'MASK_REVEAL', signature: 'Metallic mask reveal, one word at a time' },
+  { id: 'M_ROSE', name: 'Rose Riot', look: 'm-rose', primary: '#FF8FB1', accent: '#FF8FB1', glow: '#F472B6', speed: 1, intensity: 1, animation: 'HORIZONTAL_SLIDE', signature: 'Playful side-to-side word slide' },
+  { id: 'M_AFTERGLOW', name: 'Afterglow', look: 'm-afterglow', primary: '#FF6B57', accent: '#FF8A5B', glow: '#FFB066', speed: 0.7, intensity: 0.6, animation: 'WORD_BY_WORD', signature: 'Warm, low-power word-by-word glow' },
+];
+
 const MODE_BY_ID = Object.fromEntries(VIEW_MODES.map((mode) => [mode.id, mode]));
+const MOBILE_BY_ID = Object.fromEntries(MOBILE_STYLES.map((m) => [m.id, m]));
 
 const MOOD_LOOKS = {
   SAD: ['echo', 'stardust', 'noir'],
@@ -55,6 +72,8 @@ let searchQuery = '';
 let searchResults = [];
 let searchError = '';
 let searchLoading = false;
+let mobileFrame = null;
+let touchedWords = new Set();
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -72,6 +91,10 @@ function isPreview() {
   const track = activeTrack();
   const playing = currentTrack();
   return !!track && (!playing || idOf(playing) !== idOf(track));
+}
+
+function isMobile() {
+  return state.settings.lyricEngine === 'mobile';
 }
 
 function hash(text) {
@@ -102,6 +125,15 @@ function resolvedLook() {
   return LOOKS.find((l) => l.look === group[hash(track.title) % group.length]) || LOOKS[0];
 }
 
+/* One style resolver for both engines. Classic output is byte-for-byte the old look. */
+function currentStyle() {
+  if (isMobile()) {
+    const style = MOBILE_BY_ID[state.settings.mobileStyle] || MOBILE_STYLES[0];
+    return { ...style, mode: 'mobile', engine: 'mobile' };
+  }
+  return { ...resolvedLook(), engine: 'classic' };
+}
+
 export function openLyrics(track = null) {
   if (!state.lyrics.open) {
     lastFocus = document.activeElement;
@@ -119,6 +151,7 @@ export function openLyrics(track = null) {
 }
 
 export function closeLyrics() {
+  stopMobileLoop();
   overlay.hidden = true;
   overlay.classList.remove('open');
   document.body.classList.remove('overlay-open');
@@ -134,51 +167,67 @@ async function loadLyrics(track) {
   const token = ++lyricRequest;
   const key = idOf(track);
   if (state.lyrics.data && state.lyrics.data.__id === key) { renderLyrics(track); return; }
-  state.lyrics = { data: null, loading: true, error: null, look: resolvedLook(), open: true };
+  state.lyrics = { data: null, loading: true, error: null, look: currentStyle(), open: true };
   renderShell(track, true);
   try {
     const data = await endpoints.lyrics(track);
     if (token !== lyricRequest) return;
-    state.lyrics = { data: { ...data, __id: key }, loading: false, error: null, look: resolvedLook(), open: true };
+    state.lyrics = { data: { ...data, __id: key }, loading: false, error: null, look: currentStyle(), open: true };
     renderLyrics(track);
     emit();
   } catch (error) {
     if (token !== lyricRequest) return;
-    state.lyrics = { data: null, loading: false, error: error.message, look: resolvedLook(), open: true };
+    state.lyrics = { data: null, loading: false, error: error.message, look: currentStyle(), open: true };
     renderShell(track, false);
   }
 }
 
 function lookStyle(look) {
-  return `--l-primary:${look.primary};--l-accent:${look.accent};--l-glow:${look.glow};--l-speed:${look.speed}`;
+  return `--l-primary:${look.primary};--l-accent:${look.accent};--l-glow:${look.glow};--l-speed:${look.speed};--l-intensity:${look.intensity ?? 1};--l-anim:${look.animation || 'LOOK'}`;
+}
+
+function styleButton(option, action, activeId) {
+  return `<button type="button" role="menuitem" data-lyr="${action}" data-style="${escapeHtml(option.id)}" class="${activeId === option.id ? 'active' : ''}">
+    <i style="background:linear-gradient(135deg,${option.primary},${option.accent})"></i>
+    <span>${escapeHtml(option.name)}<small>${escapeHtml(option.signature || '')}</small></span>
+    ${option.animation ? '<b>WORD</b>' : option.mode ? '<b>VIEW</b>' : ''}
+  </button>`;
 }
 
 function lookMenu() {
-  const options = [
-    { name: 'AUTO · Mood Match', look: 'AUTO', primary: '#ED5564', accent: '#6CE5FF', signature: 'Picks a look from the song mood' },
-    ...VIEW_MODES.map((mode) => ({ ...mode, look: mode.id })),
-    ...LOOKS,
+  const classic = [
+    { name: 'AUTO · Mood Match', id: 'AUTO', look: 'AUTO', primary: '#ED5564', accent: '#6CE5FF', signature: 'Picks a look from the song mood' },
+    ...VIEW_MODES.map((mode) => ({ ...mode, id: mode.id })),
+    ...LOOKS.map((l) => ({ ...l, id: l.look })),
   ];
-  return `<div class="look-menu" role="menu" aria-label="LyricsPlay looks and views">${options.map((o) => `
-    <button type="button" role="menuitem" data-lyr="look" data-look="${escapeHtml(o.look)}" class="${state.settings.lyricLook === o.look ? 'active' : ''}">
-      <i style="background:linear-gradient(135deg,${o.primary},${o.accent})"></i>
-      <span>${escapeHtml(o.name)}<small>${escapeHtml(o.signature || '')}</small></span>
-      ${o.mode ? '<b>VIEW</b>' : ''}
-    </button>`).join('')}</div>`;
+  const engine = isMobile() ? 'mobile' : 'classic';
+  const options = isMobile() ? MOBILE_STYLES : classic;
+  const activeId = isMobile() ? state.settings.mobileStyle : state.settings.lyricLook;
+  const action = isMobile() ? 'mobile-style' : 'look';
+  return `<div class="look-menu" role="menu" aria-label="LyricsPlay styles">
+    <div class="mode-switch" role="group" aria-label="Lyrics engine">
+      <button type="button" role="menuitem" data-lyr="engine" data-engine="classic" class="${engine === 'classic' ? 'active' : ''}">Classic</button>
+      <button type="button" role="menuitem" data-lyr="engine" data-engine="mobile" class="${engine === 'mobile' ? 'active' : ''}">Mobile · word sync</button>
+    </div>
+    <div class="menu-group-label">${isMobile() ? 'INSTALRC + AMOLED · WORD ENGINE' : 'CLASSIC · 15 LOOKS + 2 VIEWS'}</div>
+    ${options.map((o) => styleButton(o, action, activeId)).join('')}
+  </div>`;
 }
 
 function stageHeader(look) {
-  const label = state.settings.lyricLook === 'AUTO' ? 'AUTO · ' + look.name : look.name;
+  const label = !isMobile() && state.settings.lyricLook === 'AUTO' ? 'AUTO · ' + look.name : look.name;
+  const chip = isMobile() ? 'MOBILE · WORD SYNC' : 'CLASSIC VIEW';
   return `<header class="lyrics-head">
     <div class="lhead-copy">
       <div class="look-name">${escapeHtml(label)}</div>
       <div class="auto-note">${escapeHtml(look.signature || '')}</div>
-      <span class="view-badge">${look.mode ? escapeHtml(look.name.toUpperCase()) + ' VIEW' : '15 SIGNATURE LOOKS'}</span>
+      <span class="view-badge">${chip}</span>
     </div>
     <div class="lyrics-head-actions">
+      ${isMobile() ? `<button type="button" class="icon-btn" data-lyr="engine-toggle" aria-label="Switch to classic lyrics" title="Switch to classic">${icon('sparkles')}</button>` : ''}
       <button type="button" class="icon-btn" data-lyr="find" aria-label="Find other lyrics" title="Find other lyrics">${icon('search')}</button>
       <div class="look-picker">
-        <button type="button" class="icon-btn" data-lyr="menu" aria-label="Choose LyricsPlay look" aria-expanded="${menuOpen}">${icon('sparkles')}</button>
+        <button type="button" class="icon-btn" data-lyr="menu" aria-label="Choose LyricsPlay style" aria-expanded="${menuOpen}">${icon('sparkles')}</button>
         ${menuOpen ? lookMenu() : ''}
       </div>
       <button type="button" class="icon-btn" data-lyr="close" aria-label="Close LyricsPlay">${icon('close')}</button>
@@ -187,7 +236,7 @@ function stageHeader(look) {
 }
 
 function renderShell(track, loading) {
-  const look = state.lyrics.look || resolvedLook();
+  const look = currentStyle();
   const art = track?.artwork || '';
   const preview = isPreview();
   const foot = preview
@@ -198,7 +247,7 @@ function renderShell(track, loading) {
          <input class="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" data-lyr="seek">
          <span class="time" data-role="dur">0:00</span></div>`;
   overlay.innerHTML = `
-    <div class="lyrics-stage" data-look="${escapeHtml(look.look)}" data-mode="${escapeHtml(look.mode || 'look')}" style="${lookStyle(look)}">
+    <div class="lyrics-stage" data-engine="${look.engine}" data-look="${escapeHtml(look.look)}" data-mode="${escapeHtml(look.mode || 'look')}" data-anim="${escapeHtml(look.animation || 'LOOK')}" data-reduced="${state.settings.reducedMotion ? '1' : '0'}" style="${lookStyle(look)}">
       <div class="lyrics-bg" style="background-image:url('${escapeHtml(art)}')"></div>
       <div class="lyrics-veil"></div>
       ${stageHeader(look)}
@@ -213,6 +262,8 @@ function renderShell(track, loading) {
     </div>`;
   hydrateIcons(overlay);
   activeLine = -1; activeWord = -1; lineNodes = []; wordNodes = [];
+  touchedWords.forEach((n) => n.style.cssText = n.style.cssText); // detached nodes; reset below
+  touchedWords = new Set();
 }
 
 function renderLyrics(track = activeTrack()) {
@@ -226,7 +277,7 @@ function renderLyrics(track = activeTrack()) {
   scroll.insertAdjacentHTML('beforeend', note + data.lines.map((line, i) => `
     <div class="lyric-line" data-line="${i}" data-start="${Number(line.startMs)}" data-end="${Number(line.endMs)}">
       ${line.words.length
-        ? line.words.map((w, j) => `<span class="lyric-word" data-word="${j}" data-start="${Number(w.startMs)}" data-end="${Number(w.endMs)}">${escapeHtml(w.text)} </span>`).join('')
+        ? line.words.map((w, j) => `<span class="lyric-word" data-w="${j}" data-word="${j}" data-start="${Number(w.startMs)}" data-end="${Number(w.endMs)}">${escapeHtml(w.text)} </span>`).join('')
         : escapeHtml(line.text)}
     </div>`).join(''));
   lineNodes = Array.from(scroll.querySelectorAll('.lyric-line'));
@@ -234,10 +285,11 @@ function renderLyrics(track = activeTrack()) {
   const status = overlay.querySelector('[data-role="status"]');
   if (status) status.textContent = `Lyrics loaded for ${track.title} — ${data.lines.length} lines.`;
   updateLyrics(isPreview() ? 0 : state.player.position);
+  syncMobileLoop();
 }
 
 function renderSearch(query = searchQuery, results = searchResults, error = searchError, loading = searchLoading) {
-  const look = resolvedLook();
+  const look = currentStyle();
   const resultsHtml = loading
     ? `<div class="lyric-results">${Array.from({ length: 3 }, () => '<div class="lyric-result skeleton-row"></div>').join('')}</div>`
     : results.length
@@ -249,7 +301,7 @@ function renderSearch(query = searchQuery, results = searchResults, error = sear
           </button>`).join('')}</div>`
       : '';
   overlay.innerHTML = `
-    <div class="lyrics-stage lyrics-search-stage" data-look="${escapeHtml(look.look)}" data-mode="${escapeHtml(look.mode || 'look')}" style="${lookStyle(look)}">
+    <div class="lyrics-stage lyrics-search-stage" data-engine="${look.engine}" data-look="${escapeHtml(look.look)}" data-mode="${escapeHtml(look.mode || 'look')}" data-anim="${escapeHtml(look.animation || 'LOOK')}" data-reduced="${state.settings.reducedMotion ? '1' : '0'}" style="${lookStyle(look)}">
       <div class="lyrics-bg" style="background-image:url('')"></div>
       <div class="lyrics-veil"></div>
       ${stageHeader(look)}
@@ -332,6 +384,76 @@ export function updateLyrics(positionMs) {
   if (durEl) durEl.textContent = fmt(dur);
 }
 
+/* --------------------------------------------------- MOBILE WORD-SYNC ENGINE */
+const WORD_VARS = ['--wp', '--ws', '--wx', '--wy', '--wo', '--wb', '--wf'];
+
+function paintMobileWords(positionMs) {
+  const style = currentStyle();
+  const intensity = style.intensity ?? 1;
+  const energy = isPreview() ? 0 : getAudioEnergy();
+  const reveal = style.animation === 'MASK_REVEAL' || style.animation === 'SCALE_IN' || style.animation === 'CINEMATIC_ZOOM';
+  const next = new Set();
+  for (let li = 0; li < lineNodes.length; li++) {
+    const start = Number(lineNodes[li].dataset.start);
+    const end = Number(lineNodes[li].dataset.end);
+    if (positionMs < start - 1500 || positionMs > end + 1500) continue;
+    const words = wordNodes[li] || [];
+    let active = -1;
+    for (let wi = 0; wi < words.length; wi++) {
+      if (positionMs >= Number(words[wi].dataset.start)) active = wi; else break;
+    }
+    const from = Math.max(0, active - 1);
+    const to = Math.min(words.length - 1, active + 2);
+    for (let wi = from; wi <= to; wi++) {
+      const node = words[wi];
+      const ws = Number(node.dataset.start);
+      const we = Number(node.dataset.end);
+      const p = Math.max(0, Math.min(1, (positionMs - ws) / Math.max(1, we - ws)));
+      const isActive = wi === active;
+      const upcoming = wi > active;
+      const base = isActive ? 1.05 : upcoming ? 0.55 : 0.72;
+      const motion = (reveal ? p * 0.34 : 0.08 * Math.sin(p * Math.PI)) * intensity;
+      const beat = energy * 0.12 * intensity;
+      const scale = Math.max(0.35, Math.min(2.6, base + motion + beat));
+      const sway = Math.sin(p * Math.PI) * (wi % 2 ? 1 : -1) * 10 * intensity;
+      const lift = (-Math.sin(p * Math.PI) * 8 - energy * 10) * intensity;
+      node.style.setProperty('--wp', p.toFixed(3));
+      node.style.setProperty('--ws', scale.toFixed(3));
+      node.style.setProperty('--wx', isActive ? sway.toFixed(1) + 'px' : '0px');
+      node.style.setProperty('--wy', isActive ? lift.toFixed(1) + 'px' : '0px');
+      node.style.setProperty('--wo', isActive ? '1' : upcoming ? '0.55' : '0.78');
+      node.style.setProperty('--wb', upcoming ? (3 * (1 - p)).toFixed(1) + 'px' : '0px');
+      node.style.setProperty('--wf', (isActive ? p * 100 : upcoming ? 0 : 100).toFixed(1) + '%');
+      next.add(node);
+    }
+  }
+  touchedWords.forEach((n) => { if (!next.has(n)) WORD_VARS.forEach((v) => n.style.removeProperty(v)); });
+  touchedWords = next;
+}
+
+function mobileTick() {
+  if (!state.lyrics.open || !isMobile()) { stopMobileLoop(); return; }
+  const positionMs = isPreview() ? 0 : getPositionMs();
+  updateLyrics(positionMs);
+  paintMobileWords(positionMs);
+  mobileFrame = requestAnimationFrame(mobileTick);
+}
+
+function syncMobileLoop() {
+  if (state.lyrics.open && isMobile() && lineNodes.length) {
+    if (!mobileFrame) mobileFrame = requestAnimationFrame(mobileTick);
+  } else {
+    stopMobileLoop();
+  }
+}
+
+function stopMobileLoop() {
+  if (mobileFrame) cancelAnimationFrame(mobileFrame);
+  mobileFrame = null;
+  touchedWords.forEach((n) => WORD_VARS.forEach((v) => n.style.removeProperty(v)));
+  touchedWords = new Set();
+}
+
 function fmt(ms) {
   const s = Math.floor((ms || 0) / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -339,14 +461,35 @@ function fmt(ms) {
 
 export function setLook(lookId) {
   state.settings.lyricLook = lookId;
-  state.lyrics.look = resolvedLook();
-  import('./storage.js').then(({ save }) => save('settings', state.settings));
+  state.lyrics.look = currentStyle();
+  persistSettings();
+  rerenderStyle();
+}
+
+export function setEngine(engine) {
+  if (engine !== 'classic' && engine !== 'mobile') return;
+  state.settings.lyricEngine = engine;
+  state.lyrics.look = currentStyle();
+  persistSettings();
+  rerenderStyle();
+}
+
+export function setMobileStyle(styleId) {
+  if (!MOBILE_BY_ID[styleId]) return;
+  state.settings.mobileStyle = styleId;
+  state.settings.lyricEngine = 'mobile';
+  state.lyrics.look = currentStyle();
+  persistSettings();
+  rerenderStyle();
+}
+
+function rerenderStyle() {
+  menuOpen = false;
   const track = activeTrack();
-  if (state.lyrics.open) {
-    if (track && state.lyrics.data) renderLyrics(track);
-    else if (track) renderShell(track, !!state.lyrics.loading);
-    else renderSearch();
-  }
+  if (!state.lyrics.open) { emit(); return; }
+  if (track && state.lyrics.data) renderLyrics(track);
+  else if (track) renderShell(track, !!state.lyrics.loading);
+  else renderSearch();
   emit();
 }
 
@@ -359,13 +502,17 @@ function onClick(event) {
     menuOpen = !menuOpen;
     const track = activeTrack();
     if (track) renderShell(track, !!state.lyrics.loading); else renderSearch();
-  } else if (action === 'retry') loadLyrics(activeTrack());
-  else if (action === 'look') { menuOpen = false; setLook(btn.dataset.look); }
+  } else if (action === 'engine') setEngine(btn.dataset.engine);
+  else if (action === 'engine-toggle') setEngine(isMobile() ? 'classic' : 'mobile');
+  else if (action === 'mobile-style') setMobileStyle(btn.dataset.style);
+  else if (action === 'retry') loadLyrics(activeTrack());
+  else if (action === 'look') setLook(btn.dataset.look);
   else if (action === 'find') {
+    stopMobileLoop();
     lyricRequest += 1;
     previewTrack = null;
     menuOpen = false;
-    state.lyrics = { data: null, loading: false, error: null, look: resolvedLook(), open: true };
+    state.lyrics = { data: null, loading: false, error: null, look: currentStyle(), open: true };
     renderSearch();
   } else if (action === 'search-retry') runLyricSearch(searchQuery);
   else if (action === 'search-result') {
@@ -414,4 +561,5 @@ export function initLyrics() {
     }
   });
   document.addEventListener('aura:openlyrics', (event) => openLyrics(event.detail?.track || null));
+  document.addEventListener('aura:closeoverlays', closeLyrics);
 }

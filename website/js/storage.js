@@ -3,6 +3,8 @@ const PREFIX = 'aura2:v1:';
 
 export const DEFAULT_SETTINGS = {
   lyricLook: 'AUTO',
+  lyricEngine: 'classic',
+  mobileStyle: 'M_AMOLED',
   autoMood: true,
   reducedMotion: false,
   crossfadeVisual: true,
