@@ -362,7 +362,7 @@ dependencies {
   // explicitly so R8 can resolve com.arthenica.smartexception.java.Exceptions (pure
   // Java, no native libs, so it does not affect 16 KB page alignment).
   implementation("com.arthenica:smart-exception-java:0.2.1")
-  implementation("io.github.dokar3:quickjs-kt-android:1.0.14")
+  implementation("io.github.dokar3:quickjs-kt-android:1.0.18")
   implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
 
   testImplementation(libs.junit)
