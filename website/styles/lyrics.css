@@ -150,8 +150,10 @@
 /* ------------------------------------------------ MOBILE · word-by-word sync
  * Additive engine only: scoped to data-engine="mobile" so every classic look
  * above keeps its original typography, glow and timing behaviour.
- * The JS engine writes --wp (word progress), --ws (scale), --wx/--wy (motion),
- * --wo (opacity), --wb (blur) and --wf (mask reveal) on the active four words. */
+ * The JS engine writes --wp (progress), --ws (scale), --wx/--wy (entry vector),
+ * --wr/--rx/--ry (3D entry tilt), --to (origin), --so (underline origin),
+ * --wo (opacity), --wb (blur) and --wf (mask reveal) on the active four words.
+ * Each preset enters from its own direction with its own finish effect. */
 .lyrics-stage[data-engine="mobile"] { background: #000; }
 .lyrics-stage[data-engine="mobile"] .lyrics-bg { display: none; }
 .lyrics-stage[data-engine="mobile"] .lyrics-veil {
@@ -163,17 +165,29 @@
 .lyrics-stage[data-engine="mobile"] .lyric-line {
   font-family: var(--font-sans); font-size: clamp(30px, 6.4vw, 62px); font-weight: 800;
   letter-spacing: -.045em; line-height: 1.18; color: rgba(255, 255, 255, .2);
+  perspective: 720px; transform-style: preserve-3d;
 }
 .lyrics-stage[data-engine="mobile"] .lyric-line.active { color: var(--l-primary); text-shadow: none; }
 .lyrics-stage[data-engine="mobile"] .lyric-line.near { color: rgba(255, 255, 255, .38); }
 .lyrics-stage[data-engine="mobile"] .lyric-word {
-  display: inline-block; transform-origin: 50% 70%;
+  position: relative; display: inline-block; transform-style: preserve-3d;
+  transform-origin: var(--to, 50% 70%);
   opacity: var(--wo, .78);
-  transform: translate3d(var(--wx, 0px), var(--wy, 0px), 0) scale(var(--ws, 1));
+  transform: translate3d(var(--wx, 0px), var(--wy, 0px), 0)
+    rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) rotateZ(var(--wr, 0deg))
+    scale(var(--ws, 1));
   filter: blur(var(--wb, 0px));
   will-change: transform, opacity, filter;
   transition: color 120ms linear, text-shadow 120ms linear;
 }
+.lyrics-stage[data-engine="mobile"] .lyric-word::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -.08em;
+  height: 2px; border-radius: 999px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--l-accent), transparent);
+  opacity: 0; transform: scaleX(.2); transform-origin: var(--so, 50%) 50%;
+  transition: opacity 120ms linear, transform 180ms cubic-bezier(.2, 0, 0, 1);
+}
+.lyrics-stage[data-engine="mobile"] .lyric-word.current::after { opacity: .8; transform: scaleX(1); }
 .lyrics-stage[data-engine="mobile"] .lyric-word.sung {
   color: var(--l-accent);
   text-shadow: 0 0 16px color-mix(in srgb, var(--l-glow) 55%, transparent);
@@ -221,10 +235,35 @@
   mask-image: linear-gradient(90deg, #000 var(--wf, 100%), transparent var(--wf, 100%));
 }
 .lyrics-stage[data-anim="HORIZONTAL_SLIDE"] .lyric-word.current { font-style: italic; }
+
+/* Directional finishes: each mobile preset lands with its own premium cue. */
+.lyrics-stage[data-engine="mobile"][data-look="m-amoled"] .lyric-word.current::after {
+  background: linear-gradient(90deg, transparent, rgba(196, 181, 253, .75), transparent);
+}
+.lyrics-stage[data-engine="mobile"][data-look="m-neon"] .lyric-word.current {
+  text-shadow: 0 0 10px var(--l-accent), 0 0 26px var(--l-glow);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--l-glow) 55%, transparent)) blur(var(--wb, 0px));
+}
+.lyrics-stage[data-engine="mobile"][data-look="m-bold"] .lyric-word.current {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .55), 0 0 18px color-mix(in srgb, var(--l-glow) 45%, transparent);
+}
+.lyrics-stage[data-engine="mobile"][data-look="m-chrome"] .lyric-word.current {
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .8)) drop-shadow(0 0 12px color-mix(in srgb, var(--l-glow) 45%, transparent)) blur(var(--wb, 0px));
+}
+.lyrics-stage[data-engine="mobile"][data-look="m-rose"] .lyric-word.current {
+  background: linear-gradient(100deg, transparent, rgba(244, 114, 182, .24), transparent);
+  border-radius: .14em; padding: 0 .03em;
+  text-shadow: 0 0 12px var(--l-accent), 0 0 28px color-mix(in srgb, var(--l-glow) 55%, transparent);
+}
+.lyrics-stage[data-engine="mobile"][data-look="m-afterglow"] .lyric-word.current {
+  text-shadow: 0 0 12px var(--l-accent), 0 0 32px var(--l-glow), 0 0 58px color-mix(in srgb, var(--l-glow) 45%, transparent);
+}
+
 .lyrics-stage[data-reduced="1"] .lyric-word { filter: none; }
 .lyrics-stage[data-reduced="1"][data-engine="mobile"] .lyric-word {
-  transform: scale(var(--ws, 1));
+  transform: scale(var(--ws, 1)); transform-origin: 50% 70%;
 }
+.lyrics-stage[data-reduced="1"][data-engine="mobile"] .lyric-word::after { transform: none; }
 
 @media (max-width: 700px) {
   .lyrics-scroll { padding: 26vh 6vw; }
@@ -238,5 +277,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lyrics-stage[data-engine="mobile"] .lyric-word { filter: none; transform: scale(var(--ws, 1)); }
+  .lyrics-stage[data-engine="mobile"] .lyric-word {
+    filter: none; transform: scale(var(--ws, 1)); transform-origin: 50% 70%;
+  }
+  .lyrics-stage[data-engine="mobile"] .lyric-word::after { transform: none; }
 }

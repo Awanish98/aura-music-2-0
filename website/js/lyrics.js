@@ -40,16 +40,29 @@ export const VIEW_MODES = [
 /* The second, mobile-grade engine. Ported from the app's InstaLrcPolicy:
  * per-word progress drives scale, side-to-side sway and a bass-reactive lift. */
 export const MOBILE_STYLES = [
-  { id: 'M_AMOLED', name: 'AMOLED Word Flow', look: 'm-amoled', primary: '#FFFFFF', accent: '#FFFFFF', glow: '#C4B5FD', speed: 0.45, intensity: 0.35, animation: 'WORD_BY_WORD', signature: 'True black, pure white, word pops on every beat' },
-  { id: 'M_NEON', name: 'Neon Pulse', look: 'm-neon', primary: '#7ED5FF', accent: '#7ED5FF', glow: '#22D3EE', speed: 1, intensity: 1, animation: 'SCALE_IN', signature: 'Oversized cyan type that scales in' },
-  { id: 'M_BOLD', name: 'Bold Typography', look: 'm-bold', primary: '#FFFFFF', accent: '#FFFFFF', glow: '#D8DEE9', speed: 1, intensity: 1, animation: 'SCALE_IN', signature: 'Clean white word-by-word karaoke' },
-  { id: 'M_CHROME', name: 'Chrome Pop', look: 'm-chrome', primary: '#FFFFFF', accent: '#CBD5E1', glow: '#818CF8', speed: 1, intensity: 1, animation: 'MASK_REVEAL', signature: 'Metallic mask reveal, one word at a time' },
-  { id: 'M_ROSE', name: 'Rose Riot', look: 'm-rose', primary: '#FF8FB1', accent: '#FF8FB1', glow: '#F472B6', speed: 1, intensity: 1, animation: 'HORIZONTAL_SLIDE', signature: 'Playful side-to-side word slide' },
-  { id: 'M_AFTERGLOW', name: 'Afterglow', look: 'm-afterglow', primary: '#FF6B57', accent: '#FF8A5B', glow: '#FFB066', speed: 0.7, intensity: 0.6, animation: 'WORD_BY_WORD', signature: 'Warm, low-power word-by-word glow' },
+  { id: 'M_AMOLED', name: 'AMOLED Word Flow', look: 'm-amoled', primary: '#FFFFFF', accent: '#FFFFFF', glow: '#C4B5FD', speed: 0.45, intensity: 0.35, animation: 'WORD_BY_WORD', signature: 'True black, pure white, words rise softly on every beat' },
+  { id: 'M_NEON', name: 'Neon Pulse', look: 'm-neon', primary: '#7ED5FF', accent: '#7ED5FF', glow: '#22D3EE', speed: 1, intensity: 1, animation: 'SCALE_IN', signature: 'Cyan words snap in from alternating sides' },
+  { id: 'M_BOLD', name: 'Bold Typography', look: 'm-bold', primary: '#FFFFFF', accent: '#FFFFFF', glow: '#D8DEE9', speed: 1, intensity: 1, animation: 'SCALE_IN', signature: 'Heavy words drop in with a clean karaoke punch' },
+  { id: 'M_CHROME', name: 'Chrome Pop', look: 'm-chrome', primary: '#FFFFFF', accent: '#CBD5E1', glow: '#818CF8', speed: 1, intensity: 1, animation: 'MASK_REVEAL', signature: 'Metallic words flip in from left and right' },
+  { id: 'M_ROSE', name: 'Rose Riot', look: 'm-rose', primary: '#FF8FB1', accent: '#FF8FB1', glow: '#F472B6', speed: 1, intensity: 1, animation: 'HORIZONTAL_SLIDE', signature: 'Playful words spring in with a tilted pink glow' },
+  { id: 'M_AFTERGLOW', name: 'Afterglow', look: 'm-afterglow', primary: '#FF6B57', accent: '#FF8A5B', glow: '#FFB066', speed: 0.7, intensity: 0.6, animation: 'WORD_BY_WORD', signature: 'Warm words drift up through a soft bloom' },
 ];
 
 const MODE_BY_ID = Object.fromEntries(VIEW_MODES.map((mode) => [mode.id, mode]));
 const MOBILE_BY_ID = Object.fromEntries(MOBILE_STYLES.map((m) => [m.id, m]));
+
+/* Entry vectors for the mobile engine. Values are starting offsets in px/deg;
+ * the JS engine eases them to zero as each word progresses. `alternate` flips
+ * the horizontal/rotation direction on every word so words arrive from both
+ * sides instead of marching from one edge. */
+const MOBILE_ENTRIES = {
+  M_AMOLED: { x: 0, y: 16, rx: 0, ry: 0, rz: 0, blur: 2.5, alternate: false },
+  M_NEON: { x: 34, y: 0, rx: 0, ry: 0, rz: 0, blur: 5, alternate: true },
+  M_BOLD: { x: 0, y: -26, rx: 0, ry: 0, rz: 0, blur: 4, alternate: false },
+  M_CHROME: { x: 28, y: 0, rx: 0, ry: 38, rz: 0, blur: 5, alternate: true },
+  M_ROSE: { x: 26, y: 8, rx: 0, ry: 0, rz: 8, blur: 2, alternate: true },
+  M_AFTERGLOW: { x: 0, y: 24, rx: 14, ry: 0, rz: 0, blur: 7, alternate: false },
+};
 
 const MOOD_LOOKS = {
   SAD: ['echo', 'stardust', 'noir'],
@@ -385,10 +398,11 @@ export function updateLyrics(positionMs) {
 }
 
 /* --------------------------------------------------- MOBILE WORD-SYNC ENGINE */
-const WORD_VARS = ['--wp', '--ws', '--wx', '--wy', '--wo', '--wb', '--wf'];
+const WORD_VARS = ['--wp', '--ws', '--wx', '--wy', '--wo', '--wb', '--wf', '--wr', '--rx', '--ry', '--to', '--so'];
 
 function paintMobileWords(positionMs) {
   const style = currentStyle();
+  const entry = MOBILE_ENTRIES[style.id] || MOBILE_ENTRIES.M_AMOLED;
   const intensity = style.intensity ?? 1;
   const energy = isPreview() ? 0 : getAudioEnergy();
   const reveal = style.animation === 'MASK_REVEAL' || style.animation === 'SCALE_IN' || style.animation === 'CINEMATIC_ZOOM';
@@ -403,27 +417,48 @@ function paintMobileWords(positionMs) {
       if (positionMs >= Number(words[wi].dataset.start)) active = wi; else break;
     }
     const from = Math.max(0, active - 1);
-    const to = Math.min(words.length - 1, active + 2);
-    for (let wi = from; wi <= to; wi++) {
+    const last = Math.min(words.length - 1, active + 2);
+    for (let wi = from; wi <= last; wi++) {
       const node = words[wi];
       const ws = Number(node.dataset.start);
       const we = Number(node.dataset.end);
       const p = Math.max(0, Math.min(1, (positionMs - ws) / Math.max(1, we - ws)));
       const isActive = wi === active;
       const upcoming = wi > active;
-      const base = isActive ? 1.05 : upcoming ? 0.55 : 0.72;
-      const motion = (reveal ? p * 0.34 : 0.08 * Math.sin(p * Math.PI)) * intensity;
-      const beat = energy * 0.12 * intensity;
-      const scale = Math.max(0.35, Math.min(2.6, base + motion + beat));
-      const sway = Math.sin(p * Math.PI) * (wi % 2 ? 1 : -1) * 10 * intensity;
-      const lift = (-Math.sin(p * Math.PI) * 8 - energy * 10) * intensity;
+
+      // Cubic-ease-out entry: the word starts at the style's vector and lands
+      // at zero as its timed slice plays. Alternating styles arrive from both
+      // sides; the others rise, drop or flip from one clear direction.
+      const travel = (1 - p) ** 2;
+      const eased = 1 - travel;
+      const side = entry.alternate ? (wi % 2 ? 1 : -1) : 1;
+      const x = entry.x * side * travel;
+      const y = entry.y * travel;
+      const rx = entry.rx * travel;
+      const ry = entry.ry * side * travel;
+      const rz = entry.rz * side * travel;
+
+      const base = isActive ? 0.9 + 0.15 * eased : upcoming ? 0.66 : 0.74;
+      const motion = (reveal ? p * 0.14 : 0.05 * Math.sin(p * Math.PI)) * intensity;
+      const beat = energy * 0.1 * intensity;
+      const scale = Math.max(0.4, Math.min(2.2, base + motion + beat));
+      const sway = isActive ? Math.sin(p * Math.PI) * (wi % 2 ? 1 : -1) * 4 * intensity : 0;
+      const lift = isActive ? (-Math.sin(p * Math.PI) * 6 - energy * 8) * intensity : 0;
+      const originX = entry.x ? (side < 0 ? '0%' : '100%') : '50%';
+      const originY = entry.y > 0 ? '100%' : entry.y < 0 ? '0%' : '70%';
+
       node.style.setProperty('--wp', p.toFixed(3));
       node.style.setProperty('--ws', scale.toFixed(3));
-      node.style.setProperty('--wx', isActive ? sway.toFixed(1) + 'px' : '0px');
-      node.style.setProperty('--wy', isActive ? lift.toFixed(1) + 'px' : '0px');
-      node.style.setProperty('--wo', isActive ? '1' : upcoming ? '0.55' : '0.78');
-      node.style.setProperty('--wb', upcoming ? (3 * (1 - p)).toFixed(1) + 'px' : '0px');
+      node.style.setProperty('--wx', (x + sway).toFixed(1) + 'px');
+      node.style.setProperty('--wy', (y + lift).toFixed(1) + 'px');
+      node.style.setProperty('--wo', (isActive ? 0.28 + 0.72 * eased : upcoming ? 0.28 + 0.56 * eased : 0.74).toFixed(3));
+      node.style.setProperty('--wb', (entry.blur * travel).toFixed(1) + 'px');
       node.style.setProperty('--wf', (isActive ? p * 100 : upcoming ? 0 : 100).toFixed(1) + '%');
+      node.style.setProperty('--wr', rz.toFixed(2) + 'deg');
+      node.style.setProperty('--rx', rx.toFixed(2) + 'deg');
+      node.style.setProperty('--ry', ry.toFixed(2) + 'deg');
+      node.style.setProperty('--to', `${originX} ${originY}`);
+      node.style.setProperty('--so', entry.x ? originX : '50%');
       next.add(node);
     }
   }
