@@ -191,6 +191,36 @@ def _with_player_client(extra: dict[str, Any] | None, client: str) -> dict[str, 
     return options
 
 
+def diagnose_proxies(video_id: str) -> dict[str, Any]:
+    """TEMPORARY diagnostic: find a public HTTP proxy that can resolve a public video."""
+    source = "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
+    try:
+        with urlrequest.urlopen(source, timeout=20) as response:
+            proxies = [line.strip() for line in response.read().decode("utf-8", "ignore").splitlines()]
+    except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
+        return {"ok": False, "error": f"proxy list failed: {type(exc).__name__}: {exc}"[:160]}
+    candidates = ["http://" + p for p in proxies if re.fullmatch(r"\d+\.\d+\.\d+\.\d+:\d+", p)][:16]
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
+    def check(proxy: str) -> tuple[str, dict[str, Any]]:
+        options = {"proxy": proxy, "retries": 0, "socket_timeout": 12}
+        try:
+            with yt_dlp.YoutubeDL(_ydl_options(options)) as ydl:
+                info = ydl.extract_info(url, download=False)
+            return proxy, {"ok": True, "formats": len(info.get("requested_formats") or []), "has_url": bool(info.get("url"))}
+        except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
+            detail = re.sub(r"https?://\S+", "[url]", f"{type(exc).__name__}: {exc}")
+            return proxy, {"ok": False, "error": detail[:140]}
+
+    results: dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for future in as_completed([pool.submit(check, proxy) for proxy in candidates]):
+            proxy, result = future.result()
+            results[proxy] = result
+    working = [proxy for proxy, result in results.items() if result.get("ok")]
+    return {"ok": bool(working), "working": working, "results": results}
+
+
 def diagnose_pages(video_id: str) -> dict[str, Any]:
     """TEMPORARY diagnostic: inspect YouTube pages for embedded player data."""
     pages = {
