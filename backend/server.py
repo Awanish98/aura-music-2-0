@@ -555,6 +555,8 @@ class AuraApp:
             "groq_configured": bool(self.config.groq_api_key),
             "model": self.config.model,
             "receiver_session_count": self.session_count(),
+            "resolver": "yt-dlp+clients-v1",
+            "last_resolve_error": music_service.LAST_ERROR,
             "server_time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         })
 

@@ -81,6 +81,7 @@ _resolve_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _lyrics_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _discover_cache: tuple[float, list[dict[str, Any]]] | None = None
+LAST_ERROR: dict[str, Any] | None = None
 
 
 class MusicError(Exception):
@@ -198,18 +199,23 @@ def _extract(query: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
     for client in ("tv_embedded", "android_vr", "web_embedded", "mweb"):
         attempts.append(_with_player_client(extra, client))
 
+    global LAST_ERROR
     last_error: Exception | None = None
     for attempt in attempts:
         try:
             with yt_dlp.YoutubeDL(_ydl_options(attempt)) as ydl:
                 info = ydl.extract_info(query, download=False)
             if isinstance(info, dict):
+                LAST_ERROR = None
                 return info
             last_error = MusicError(502, "The provider returned an unexpected response.", "bad_provider_data")
         except MusicError:
             raise
         except Exception as exc:  # network, extraction, rate limit, region, ...
             last_error = exc
+    if last_error is not None:
+        detail = re.sub(r"https?://\S+", "[url]", f"{type(last_error).__name__}: {last_error}")
+        LAST_ERROR = {"at": time.time(), "detail": detail[:240]}
     raise MusicError(
         502,
         "The music provider is temporarily unavailable. Try again.",
