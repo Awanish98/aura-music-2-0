@@ -1,5 +1,15 @@
-/* Thin fetch layer: timeouts, typed errors and one bounded retry for GETs. */
+/* Thin fetch layer: timeouts, typed errors, one bounded retry and a small
+ * metadata cache so a sleeping backend cannot block the whole UI. No audio is
+ * ever cached here — only provider search metadata. */
+import { load, save } from './storage.js';
+
 export const API_BASE = (window.AURA_API_BASE || '/api').replace(/\/$/, '');
+
+const SEARCH_CACHE_KEY = 'searchCache';
+const SEARCH_TTL = 6 * 60 * 60 * 1000;
+const SEARCH_STALE_TTL = 7 * 24 * 60 * 60 * 1000;
+const SEARCH_CACHE_LIMIT = 40;
+const searchCache = load(SEARCH_CACHE_KEY, {});
 
 export class ApiError extends Error {
   constructor(status, message, code = 'request_failed') {
@@ -8,6 +18,36 @@ export class ApiError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+function searchKey(query) {
+  return String(query || '').trim().toLowerCase();
+}
+
+function rememberSearch(query, data) {
+  const key = searchKey(query);
+  if (key.length < 2 || !Array.isArray(data?.tracks) || !data.tracks.length) return;
+  const previous = searchCache[key];
+  if (!previous || data.tracks.length >= (previous.data?.tracks?.length || 0)) {
+    searchCache[key] = { at: Date.now(), data };
+  }
+  const cutoff = Date.now() - SEARCH_STALE_TTL;
+  for (const [k, entry] of Object.entries(searchCache)) {
+    if (!entry?.at || entry.at < cutoff || !entry.data?.tracks?.length) delete searchCache[k];
+  }
+  const keys = Object.keys(searchCache).sort((a, b) => searchCache[b].at - searchCache[a].at);
+  for (const k of keys.slice(SEARCH_CACHE_LIMIT)) delete searchCache[k];
+  save(SEARCH_CACHE_KEY, searchCache);
+}
+
+function cachedSearch(query, limit, allowStale = false) {
+  const entry = searchCache[searchKey(query)];
+  if (!entry?.data?.tracks?.length) return null;
+  const age = Date.now() - entry.at;
+  if (age > SEARCH_STALE_TTL) return null;
+  if (!allowStale && age > SEARCH_TTL) return null;
+  if (entry.data.tracks.length < limit) return null;
+  return { ...entry.data, tracks: entry.data.tracks.slice(0, limit), cached: true, stale: age > SEARCH_TTL };
 }
 
 async function once(path, { signal, timeout = 60000, method = 'GET', body } = {}) {
@@ -47,16 +87,35 @@ export async function api(path, options = {}) {
     return await once(path, options);
   } catch (error) {
     if (error instanceof ApiError && (error.status === 0 || error.status >= 500) && !options.signal?.aborted) {
-      return once(path, options); // one retry for transient/network failures
+      // A sleeping Render instance can need a moment after the first wake-up.
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      if (options.signal?.aborted) throw error;
+      return once(path, options);
     }
     throw error;
   }
 }
 
 export const endpoints = {
+  health: () => api('/health', { timeout: 20000 }),
   config: () => api('/config'),
   apk: () => api('/download/apk'),
-  search: (q, limit = 18, options = {}) => api(`/catalog/search?q=${encodeURIComponent(q)}&limit=${limit}`, options),
+  search: async (q, limit = 18, options = {}) => {
+    const query = String(q || '').trim();
+    if (query.length < 2) throw new ApiError(400, 'Enter at least two characters to search.', 'query_too_short');
+    const fresh = cachedSearch(query, limit);
+    if (fresh && !options.signal?.aborted) return fresh;
+    try {
+      const data = await api(`/catalog/search?q=${encodeURIComponent(query)}&limit=${limit}`, options);
+      rememberSearch(query, data);
+      return data;
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      const stale = cachedSearch(query, limit, true);
+      if (stale) return { ...stale, degraded: true, stale: true };
+      throw error;
+    }
+  },
   discover: () => api('/catalog/discover'),
   aiSuggest: (input) => api('/ai/suggest', { method: 'POST', timeout: 120000, body: input }),
   lastfmToken: () => api('/lastfm/token', { method: 'POST', timeout: 20000, body: {} }),

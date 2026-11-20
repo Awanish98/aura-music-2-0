@@ -60,6 +60,15 @@ async function bootstrap() {
     state.config = { capabilities: {}, groqConfigured: false };
     setBackendStatus(false);
   }
+  // Wake a sleeping backend when the user returns to the tab, before they type.
+  let lastWarm = Date.now();
+  const warmBackend = () => {
+    if (Date.now() - lastWarm < 120000) return;
+    lastWarm = Date.now();
+    endpoints.health().catch(() => { /* offline remains usable */ });
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) warmBackend(); });
+  window.addEventListener('focus', warmBackend);
   // Mood Radio and Settings show config-derived notes; refresh once config is known.
   if (state.route === '/mood' || state.route === '/settings') {
     render(document.getElementById('view'), state.route);

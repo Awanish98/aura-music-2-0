@@ -15,7 +15,21 @@ let vizMode = 0;
 let seeking = false;
 let audioUnlocked = false;
 let pendingPlay = false;
+const streamRetries = new Map();
 const VIZ_MODES = ['SPECTRUM', 'RADIAL', 'WAVE', 'PARTICLES', 'RINGS', 'AURORA', 'BARS', '3D PATTERN'];
+
+function trackKey(track = currentTrack()) {
+  return track ? String(track.id || track.videoId || '') : '';
+}
+
+function clearStreamRetries(exceptKey = '') {
+  for (const [key, retry] of streamRetries) {
+    if (key === exceptKey) continue;
+    clearTimeout(retry.timer);
+    streamRetries.delete(key);
+  }
+}
+
 
 export function currentTrack() {
   const p = state.player;
@@ -124,7 +138,10 @@ function loadCurrent(autoplay = true) {
   if (!track) return;
   p.position = 0;
   p.duration = track.durationMs || 0;
-  const url = track.url && String(track.url).startsWith('blob:') ? track.url : streamUrl(track.id || track.videoId);
+  const id = String(track.id || track.videoId || '');
+  const url = track.url && String(track.url).startsWith('blob:') ? track.url : streamUrl(id);
+  clearStreamRetries(id);
+  streamRetries.delete(id);
   setPending(false);
   audio.src = url;
   audio.volume = p.volume;
@@ -648,6 +665,7 @@ export function initPlayer() {
   audio.addEventListener('play', () => {
     state.player.playing = true;
     setPending(false);
+    streamRetries.delete(trackKey());
     updatePlayState();
     const a = ensureAnalyser();
     if (a && audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
@@ -661,6 +679,23 @@ export function initPlayer() {
   });
   audio.addEventListener('error', () => {
     if (!audio.src) return;
+    const key = trackKey();
+    const retry = streamRetries.get(key) || { count: 0, timer: null };
+    // A sleeping backend often answers 502 on the first stream request. Retry
+    // quietly twice before telling the user; never show a block toast here.
+    if (key && retry.count < 2) {
+      retry.count += 1;
+      streamRetries.set(key, retry);
+      clearTimeout(retry.timer);
+      retry.timer = setTimeout(() => {
+        if (trackKey() !== key) return;
+        const track = currentTrack();
+        const base = track?.url && String(track.url).startsWith('blob:') ? track.url : streamUrl(key);
+        audio.src = base.startsWith('blob:') ? base : `${base}${base.includes('?') ? '&' : '?'}retry=${retry.count}`;
+        requestPlay();
+      }, retry.count === 1 ? 700 : 1800);
+      return;
+    }
     toast('This stream could not be played. Press play to retry.', true);
     state.player.playing = false;
     updatePlayState();
