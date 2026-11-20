@@ -48,6 +48,10 @@ DISCOVER_TTL = 15 * 60
 PROXY_LIST_URL = "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
 PROXY_LIST_TTL = 30 * 60
 PROXY_CACHE_TTL = 10 * 60
+SEED_PROXIES = (
+    "http://103.133.27.239:8080",
+    "http://193.43.145.231:8080",
+)
 
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 RANGE_RE = re.compile(r"^bytes=(\d+)-(\d*)$")
@@ -91,6 +95,7 @@ _proxy_cache: tuple[float, list[str]] | None = None
 _working_proxies: tuple[float, list[str]] | None = None
 LAST_ERROR: dict[str, Any] | None = None
 LAST_PROXY_DIAG: dict[str, Any] | None = None
+DIRECT_BLOCKED_UNTIL = 0.0
 
 
 class MusicError(Exception):
@@ -246,6 +251,11 @@ def _proxy_alive(proxy: str, video_id: str) -> bool:
         return False
 
 
+def _is_bot_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "not a bot" in text or "sign in to confirm" in text or "please sign in" in text
+
+
 def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, Any] | None:
     """Resolve a single public video through a cached or freshly checked proxy."""
     global _working_proxies, LAST_PROXY_DIAG
@@ -260,48 +270,66 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
         except Exception:  # noqa: BLE001 - try the next public proxy
             return proxy, None
 
+    def try_proxies(proxies: list[str], timeout: float) -> tuple[dict[str, Any] | None, list[str]]:
+        chosen: dict[str, Any] | None = None
+        working: list[str] = []
+        if not proxies:
+            return chosen, working
+        pool = ThreadPoolExecutor(max_workers=min(6, len(proxies)))
+        try:
+            futures = [pool.submit(attempt, proxy) for proxy in proxies]
+            done, _ = wait(futures, timeout=timeout)
+            for future in done:
+                try:
+                    proxy, info = future.result()
+                    if info is not None:
+                        working.append(proxy)
+                        if chosen is None:
+                            chosen = info
+                except Exception:  # noqa: BLE001 - ignore a failed public proxy
+                    continue
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        return chosen, working
+
+    # Known-good public proxies first; no credentials or user data go through them.
     now = time.monotonic()
     with _lock:
         cached = _working_proxies
+    preferred = list(SEED_PROXIES)
     if cached and cached[0] > now:
-        for proxy in cached[1][:3]:
-            _, info = attempt(proxy)
-            if info is not None:
-                return info
+        preferred = list(cached[1][:3]) + preferred
+    seen: set[str] = set()
+    preferred = [p for p in preferred if not (p in seen or seen.add(p))][:5]
+
+    chosen, working = try_proxies(preferred, 14)
+    if chosen is not None:
+        LAST_PROXY_DIAG = {"at": time.time(), "seeded": len(preferred), "checked": 0, "alive": 0, "working": len(working)}
+        with _lock:
+            _working_proxies = (time.monotonic() + PROXY_CACHE_TTL, working[:6])
+        return chosen
 
     candidates = _public_proxy_candidates()
-    LAST_PROXY_DIAG = {"at": time.time(), "checked": len(candidates), "alive": 0, "working": 0}
-    if not candidates:
+    LAST_PROXY_DIAG = {"at": time.time(), "seeded": len(preferred), "checked": len(candidates), "alive": 0, "working": 0}
+    rest = [p for p in candidates if p not in seen][:18]
+    if not rest:
         return None
+
     alive: list[str] = []
-    with ThreadPoolExecutor(max_workers=12) as pool:
-        for proxy, ok in zip(candidates, pool.map(lambda p: _proxy_alive(p, video_id), candidates)):
+    pool = ThreadPoolExecutor(max_workers=12)
+    try:
+        for proxy, ok in zip(rest, pool.map(lambda p: _proxy_alive(p, video_id), rest)):
             if ok:
                 alive.append(proxy)
-            if len(alive) >= 6:
+            if len(alive) >= 5:
                 break
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     LAST_PROXY_DIAG["alive"] = len(alive)
     if not alive:
         return None
 
-    chosen: dict[str, Any] | None = None
-    working: list[str] = []
-    pool = ThreadPoolExecutor(max_workers=6)
-    try:
-        futures = [pool.submit(attempt, proxy) for proxy in alive]
-        done, _ = wait(futures, timeout=45)
-        for future in done:
-            try:
-                proxy, info = future.result()
-                if info is not None:
-                    working.append(proxy)
-                    if chosen is None:
-                        chosen = info
-            except Exception:  # noqa: BLE001 - ignore a failed public proxy
-                continue
-    finally:
-        # Do not block the request on a slow/dead proxy; cancel what is left.
-        pool.shutdown(wait=False, cancel_futures=True)
+    chosen, working = try_proxies(alive, 20)
     LAST_PROXY_DIAG["working"] = len(working)
     if chosen is not None:
         with _lock:
@@ -310,23 +338,27 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
 
 
 def _extract(query: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
-    # Search normally works from every host, but the player API used for stream
-    # resolution is IP-sensitive. Try the default and alternate clients first.
-    attempts: list[dict[str, Any] | None] = [extra]
-    for client in ("tv_embedded", "android_vr", "web_embedded", "mweb"):
-        attempts.append(_with_player_client(extra, client))
-
-    global LAST_ERROR
+    """Extract public media metadata, with a keyless proxy fallback when needed."""
+    global LAST_ERROR, DIRECT_BLOCKED_UNTIL
     last_error: Exception | None = None
-    for attempt in attempts:
-        try:
-            info = _extract_once(query, attempt)
-            LAST_ERROR = None
-            return info
-        except MusicError:
-            raise
-        except Exception as exc:  # network, extraction, rate limit, region, ...
-            last_error = exc
+
+    if time.monotonic() >= DIRECT_BLOCKED_UNTIL:
+        attempts: list[dict[str, Any] | None] = [extra]
+        for client in ("tv_embedded", "android_vr"):
+            attempts.append(_with_player_client(extra, client))
+        for attempt in attempts:
+            try:
+                info = _extract_once(query, attempt)
+                LAST_ERROR = None
+                return info
+            except MusicError:
+                raise
+            except Exception as exc:  # network, extraction, rate limit, region, ...
+                last_error = exc
+                if _is_bot_error(exc):
+                    # Every player client from this IP will hit the same gate.
+                    DIRECT_BLOCKED_UNTIL = time.monotonic() + 300
+                    break
 
     # Datacenter IPs are often bot-gated by YouTube. A keyless public proxy lets
     # us resolve public videos without cookies, po-tokens or private API keys.
