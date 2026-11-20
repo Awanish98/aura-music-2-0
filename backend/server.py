@@ -557,6 +557,7 @@ class AuraApp:
             "receiver_session_count": self.session_count(),
             "resolver": "yt-dlp+clients+proxy-v1",
             "last_resolve_error": music_service.LAST_ERROR,
+            "last_proxy_diag": music_service.LAST_PROXY_DIAG,
             "server_time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         })
 

@@ -90,6 +90,7 @@ _discover_cache: tuple[float, list[dict[str, Any]]] | None = None
 _proxy_cache: tuple[float, list[str]] | None = None
 _working_proxies: tuple[float, list[str]] | None = None
 LAST_ERROR: dict[str, Any] | None = None
+LAST_PROXY_DIAG: dict[str, Any] | None = None
 
 
 class MusicError(Exception):
@@ -247,7 +248,7 @@ def _proxy_alive(proxy: str, video_id: str) -> bool:
 
 def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, Any] | None:
     """Resolve a single public video through a cached or freshly checked proxy."""
-    global _working_proxies
+    global _working_proxies, LAST_PROXY_DIAG
     match = re.search(r"(?:v=|youtu\.be/|/vi/)([A-Za-z0-9_-]{11})", query)
     if not match:
         return None
@@ -269,6 +270,7 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
                 return info
 
     candidates = _public_proxy_candidates()
+    LAST_PROXY_DIAG = {"at": time.time(), "checked": len(candidates), "alive": 0, "working": 0}
     if not candidates:
         return None
     alive: list[str] = []
@@ -278,6 +280,7 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
                 alive.append(proxy)
             if len(alive) >= 6:
                 break
+    LAST_PROXY_DIAG["alive"] = len(alive)
     if not alive:
         return None
 
@@ -299,6 +302,7 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
     finally:
         # Do not block the request on a slow/dead proxy; cancel what is left.
         pool.shutdown(wait=False, cancel_futures=True)
+    LAST_PROXY_DIAG["working"] = len(working)
     if chosen is not None:
         with _lock:
             _working_proxies = (time.monotonic() + PROXY_CACHE_TTL, working[:6])
