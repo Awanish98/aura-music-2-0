@@ -70,8 +70,8 @@ AURA MUSIC is distributed under the GNU General Public License v3.0 — see [LIC
 
 <div align="center">
 
-Crafted with passion by AURA MUSIC.
+Crafted with passion by JORDAN.
 
-© 2026 AURA MUSIC. All rights reserved.
+© 2026 Jordan. All rights reserved.
 
 </div>
