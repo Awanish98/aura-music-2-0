@@ -141,6 +141,9 @@ export async function loadDiscover(force = false) {
 
 /* --------------------------------------------------------------- search */
 function renderSearch(root, params) {
+  const activeInput = document.activeElement;
+  const keepFocus = activeInput?.id === 'searchInput';
+  const caret = keepFocus ? [activeInput.selectionStart, activeInput.selectionEnd] : null;
   const q = params.get('q') || state.search.query || '';
   state.search.query = q;
   const s = state.search;
@@ -183,21 +186,32 @@ function renderSearch(root, params) {
     const value = e.target.value.trim();
     if (value.length >= 3) searchTimer = setTimeout(() => runSearch(value), 550);
   });
+  if (keepFocus) {
+    const input = root.querySelector('#searchInput');
+    input?.focus();
+    if (input && caret && caret[0] != null) input.setSelectionRange(caret[0], caret[1]);
+  }
 }
 
 export async function runSearch(query) {
-  state.search.query = query;
-  state.search.loadedQuery = query;
+  const q = String(query || '').trim();
+  if (!q) return;
+  state.search.query = q;
+  state.search.loadedQuery = q;
   state.search.loading = true; state.search.error = null;
-  history.replaceState(null, '', `#/search?q=${encodeURIComponent(query)}`);
-  if (state.route === '/search') render(document.getElementById('view'), '/search?q=' + encodeURIComponent(query));
+  const path = `/search?q=${encodeURIComponent(q)}`;
+  // Setting the hash fires the router, which renders the search view from any
+  // route. replaceState() did not fire hashchange, so home searches never left
+  // the home view. Keep the hash change for back/forward history support.
+  if (location.hash.slice(1) !== path) location.hash = '#' + path;
+  else render(document.getElementById('view'), path);
   try {
-    state.search.results = await endpoints.search(query, 24);
+    state.search.results = await endpoints.search(q, 24);
   } catch (error) {
     state.search.error = error.message;
   } finally {
     state.search.loading = false;
-    if (state.route === '/search') render(document.getElementById('view'), location.hash.slice(1));
+    if (location.hash.slice(1) === path) render(document.getElementById('view'), path);
   }
 }
 

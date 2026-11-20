@@ -183,8 +183,19 @@ export function toggleCurrentFavorite() {
   renderPlayer();
 }
 
-export function openFullPlayer() { overlay.hidden = false; renderPlayer(); }
-export function closeFullPlayer() { overlay.hidden = true; }
+let fullPlayerTrigger = null;
+
+export function openFullPlayer() {
+  fullPlayerTrigger = document.activeElement;
+  overlay.hidden = false;
+  renderPlayer();
+  requestAnimationFrame(() => overlay.querySelector('.player-minimize')?.focus());
+}
+export function closeFullPlayer() {
+  overlay.hidden = true;
+  if (fullPlayerTrigger?.isConnected) fullPlayerTrigger.focus();
+  fullPlayerTrigger = null;
+}
 
 /* ------------------------------------------------------------------ rendering */
 
@@ -224,57 +235,79 @@ export function renderPlayer() {
       <button type="button" class="icon-btn tiny" data-action="queue" aria-label="Open queue">${icon('queue', 18)}</button>
     </div>`;
 
+  const focusedAction = overlay.contains(document.activeElement) ? document.activeElement.dataset.action : null;
+
   overlay.innerHTML = `
     <div class="player-bg" data-role="bg" style="background-image:url('${art}')"></div>
-    <header class="player-head">
-      <div><p class="eyebrow">NOW PLAYING · ${escapeHtml(track.provider || 'AURA')}</p></div>
-      <div class="player-head-actions">
-        <button type="button" class="icon-btn" data-action="lyrics" aria-label="LyricsPlay">${icon('lyrics')}</button>
-        <button type="button" class="icon-btn" data-action="viz" aria-label="Cycle visualizer: ${VIZ_MODES[vizMode]}">${icon('waveform')}</button>
-        <button type="button" class="icon-btn" data-action="close-full" aria-label="Close full player">${icon('close')}</button>
-      </div>
-    </header>
-    <div class="player-body">
-      <div class="player-art-wrap"><img src="${art}" alt="Artwork for ${escapeHtml(track.title)}"><span class="shine"></span></div>
-      <div class="player-info">
-        <p class="eyebrow">${escapeHtml(p.context || 'AURA MUSIC 2.0')}</p>
-        <h1>${escapeHtml(track.title)}</h1>
-        <div class="artist">${escapeHtml(track.artist)}</div>
-        <div class="album">${escapeHtml(track.album || 'Single · source: ' + (track.sourceAttribution || 'YouTube'))}</div>
-        <div class="tags">
-          <button type="button" class="chip ${favorite ? 'active' : ''}" data-action="favorite">${icon('heart', 14)} ${favorite ? 'Saved' : 'Save'}</button>
-          <a class="chip" href="#/artist/${encodeURIComponent(track.artist)}" data-action="close-full">${icon('artist', 14)} Artist</a>
-          <a class="chip" href="#/video?id=${encodeURIComponent(track.id)}" data-action="close-full">${icon('video', 14)} Video</a>
+    <div class="player-veil" aria-hidden="true"></div>
+    <section class="player-stage" role="dialog" aria-modal="true" aria-label="Now playing: ${escapeHtml(track.title)}">
+      <header class="player-head">
+        <button type="button" class="icon-btn player-minimize" data-action="close-full" aria-label="Minimize player">${icon('chevronLeft', 18)}</button>
+        <div class="player-heading">
+          <p class="eyebrow">NOW PLAYING · ${escapeHtml(track.provider || 'AURA')}</p>
+          <span class="queue-count">${p.queue.length} TRACK${p.queue.length === 1 ? '' : 'S'} IN QUEUE</span>
         </div>
-        <canvas class="viz-canvas" id="vizCanvas" aria-label="Audio reactive visualizer"></canvas>
-        <p class="eyebrow" style="margin:6px 0 0;color:var(--faint)" data-role="viz-name">${VIZ_MODES[vizMode]}</p>
+        <div class="player-head-actions">
+          <button type="button" class="icon-btn" data-action="lyrics" aria-label="Open LyricsPlay">${icon('lyrics', 18)}</button>
+          <button type="button" class="icon-btn" data-action="viz" aria-label="Cycle visualizer: ${VIZ_MODES[vizMode]}">${icon('waveform', 18)}</button>
+          <button type="button" class="icon-btn" data-action="close-full" aria-label="Close full player">${icon('close', 18)}</button>
+        </div>
+      </header>
+
+      <div class="player-body">
+        <figure class="player-art-wrap" data-playing="${playing}">
+          <img src="${art}" alt="Artwork for ${escapeHtml(track.title)}">
+          <figcaption class="art-badge"><i aria-hidden="true"></i>${playing ? 'PLAYING' : 'PAUSED'}</figcaption>
+        </figure>
+        <div class="player-info">
+          <p class="source-pill" title="${escapeHtml(p.context || 'AURA MUSIC 2.0')}">${escapeHtml(p.context || 'AURA MUSIC 2.0')}</p>
+          <h1>${escapeHtml(track.title)}</h1>
+          <div class="artist">${escapeHtml(track.artist)}</div>
+          <div class="album">${escapeHtml(track.album || 'Single · source: ' + (track.sourceAttribution || 'YouTube'))}</div>
+          <div class="tags">
+            <button type="button" class="chip ${favorite ? 'active' : ''}" data-action="favorite" aria-pressed="${favorite}">${icon('heart', 14)} ${favorite ? 'Saved' : 'Save'}</button>
+            <a class="chip" href="#/artist/${encodeURIComponent(track.artist)}" data-action="close-full">${icon('artist', 14)} Artist</a>
+            <a class="chip" href="#/video?id=${encodeURIComponent(track.id)}" data-action="close-full">${icon('video', 14)} Video</a>
+          </div>
+          <div class="viz-panel">
+            <div class="viz-panel-head">
+              <span class="eyebrow">LIVE VISUALIZER</span>
+              <span class="viz-mode" data-role="viz-name">${VIZ_MODES[vizMode]}</span>
+            </div>
+            <canvas class="viz-canvas" id="vizCanvas" aria-label="Audio reactive visualizer"></canvas>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="player-controls">
-      <div class="seek-row">
-        <span class="time" data-role="cur">${fmt(p.position)}</span>
-        <input class="seek" type="range" min="0" max="1000" value="${p.duration ? Math.round(p.position / p.duration * 1000) : 0}" aria-label="Seek" data-role="seek">
-        <span class="time" data-role="dur">${fmt(p.duration)}</span>
+
+      <div class="player-dock">
+        <div class="dock-progress">
+          <span class="time" data-role="cur">${fmt(p.position)}</span>
+          <input class="seek seek-lg" type="range" min="0" max="1000" value="${p.duration ? Math.round(p.position / p.duration * 1000) : 0}" aria-label="Seek" data-role="seek">
+          <span class="time" data-role="dur">${fmt(p.duration)}</span>
+        </div>
+        <div class="dock-main">
+          <div class="dock-spacer" aria-hidden="true"></div>
+          <div class="player-buttons">
+            <button type="button" class="icon-btn ${p.shuffle ? 'on' : ''}" data-action="shuffle" aria-label="Shuffle" aria-pressed="${p.shuffle}">${icon('shuffle', 20)}</button>
+            <button type="button" class="icon-btn" data-action="prev" aria-label="Previous track">${icon('prev', 22)}</button>
+            <button type="button" class="icon-btn big" data-action="play" aria-label="${playing ? 'Pause' : 'Play'}">${icon(playing ? 'pause' : 'play', 26)}</button>
+            <button type="button" class="icon-btn" data-action="next" aria-label="Next track">${icon('next', 22)}</button>
+            <button type="button" class="icon-btn ${p.repeat !== 'off' ? 'on' : ''}" data-action="repeat" aria-label="Repeat: ${p.repeat}">${icon(p.repeat === 'one' ? 'repeatOne' : 'repeat', 20)}</button>
+          </div>
+          <div class="dock-tools">
+            <div class="grp"><button type="button" class="icon-btn" data-action="mute" aria-label="${p.volume === 0 ? 'Unmute' : 'Mute'}">${icon(p.volume === 0 ? 'volumeMute' : 'volume', 18)}</button>
+              <input type="range" min="0" max="1" step="0.01" value="${p.volume}" aria-label="Volume" data-role="volume"></div>
+            <div class="grp"><button type="button" class="icon-btn" data-action="queue" aria-label="Open queue">${icon('queue', 18)}</button></div>
+          </div>
+        </div>
       </div>
-      <div class="player-buttons">
-        <button type="button" class="icon-btn ${p.shuffle ? 'on' : ''}" data-action="shuffle" aria-label="Shuffle" aria-pressed="${p.shuffle}">${icon('shuffle', 22)}</button>
-        <button type="button" class="icon-btn" data-action="prev" aria-label="Previous track">${icon('prev', 24)}</button>
-        <button type="button" class="icon-btn big" data-action="play" aria-label="${playing ? 'Pause' : 'Play'}">${icon(playing ? 'pause' : 'play', 26)}</button>
-        <button type="button" class="icon-btn" data-action="next" aria-label="Next track">${icon('next', 24)}</button>
-        <button type="button" class="icon-btn ${p.repeat !== 'off' ? 'on' : ''}" data-action="repeat" aria-label="Repeat: ${p.repeat}">${icon(p.repeat === 'one' ? 'repeatOne' : 'repeat', 22)}</button>
-      </div>
-      <div class="player-foot-controls">
-        <div class="grp"><button type="button" class="icon-btn" data-action="mute" aria-label="Mute">${icon(p.volume === 0 ? 'volumeMute' : 'volume')}</button>
-          <input type="range" min="0" max="1" step="0.01" value="${p.volume}" aria-label="Volume" data-role="volume"></div>
-        <div class="grp"><button type="button" class="icon-btn" data-action="queue" aria-label="Queue">${icon('queue')}</button>
-          <button type="button" class="icon-btn" data-action="full-close-foot" aria-label="Minimize player">${icon('chevronLeft')}</button></div>
-      </div>
-    </div>`;
+    </section>`;
 
   hydrateIcons(mini);
   hydrateIcons(overlay);
   updateProgress();
   setupVisualizer();
+  if (focusedAction) overlay.querySelector(`[data-action="${focusedAction}"]`)?.focus();
 }
 
 function renderQueueBadge() {
