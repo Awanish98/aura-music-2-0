@@ -43,6 +43,12 @@ SEARCH_TTL = 10 * 60
 LYRICS_TTL = 24 * 3600
 DISCOVER_TTL = 15 * 60
 
+# Keyless fallback for datacenter IPs that YouTube bot-gates. These public
+# proxies see only public video URLs — never cookies, tokens or user data.
+PROXY_LIST_URL = "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
+PROXY_LIST_TTL = 30 * 60
+PROXY_CACHE_TTL = 10 * 60
+
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 RANGE_RE = re.compile(r"^bytes=(\d+)-(\d*)$")
 LINE_RE = re.compile(r"^\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\](.*)$")
@@ -81,6 +87,8 @@ _resolve_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _lyrics_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _discover_cache: tuple[float, list[dict[str, Any]]] | None = None
+_proxy_cache: tuple[float, list[str]] | None = None
+_working_proxies: tuple[float, list[str]] | None = None
 LAST_ERROR: dict[str, Any] | None = None
 
 
@@ -191,125 +199,115 @@ def _with_player_client(extra: dict[str, Any] | None, client: str) -> dict[str, 
     return options
 
 
-def diagnose_proxies(video_id: str) -> dict[str, Any]:
-    """TEMPORARY diagnostic: find a public HTTP proxy that can resolve a public video."""
-    source = "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
+def _extract_once(query: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    with yt_dlp.YoutubeDL(_ydl_options(extra)) as ydl:
+        info = ydl.extract_info(query, download=False)
+    if not isinstance(info, dict):
+        raise MusicError(502, "The provider returned an unexpected response.", "bad_provider_data")
+    return info
+
+
+def _proxy_options(extra: dict[str, Any] | None, proxy: str) -> dict[str, Any]:
+    options = dict(extra or {})
+    options.update({"proxy": proxy, "retries": 0, "socket_timeout": 12, "fragment_retries": 0})
+    return options
+
+
+def _public_proxy_candidates() -> list[str]:
+    """Fetch and lightly cache a keyless public HTTP proxy list.
+
+    These proxies are used only for public YouTube metadata/stream resolution.
+    No credentials, cookies, tokens or user data ever pass through them.
+    """
+    global _proxy_cache
+    now = time.monotonic()
+    with _lock:
+        if _proxy_cache and _proxy_cache[0] > now:
+            return _proxy_cache[1]
     try:
-        with urlrequest.urlopen(source, timeout=20) as response:
-            proxies = [line.strip() for line in response.read().decode("utf-8", "ignore").splitlines()]
-    except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
-        return {"ok": False, "error": f"proxy list failed: {type(exc).__name__}: {exc}"[:160]}
-    candidates = ["http://" + p for p in proxies if re.fullmatch(r"\d+\.\d+\.\d+\.\d+:\d+", p)][:40]
-    url = f"https://www.youtube.com/watch?v={video_id}"
+        with urlrequest.urlopen(PROXY_LIST_URL, timeout=15) as response:
+            lines = response.read().decode("utf-8", "ignore").splitlines()
+    except Exception:
+        with _lock:
+            return list(_proxy_cache[1]) if _proxy_cache else []
+    candidates = ["http://" + line.strip() for line in lines if re.fullmatch(r"\d+\.\d+\.\d+\.\d+:\d+", line.strip())][:40]
+    with _lock:
+        _proxy_cache = (now + PROXY_LIST_TTL, candidates)
+    return candidates
 
-    def proxy_alive(proxy: str) -> bool:
+
+def _proxy_alive(proxy: str, video_id: str) -> bool:
+    try:
+        opener = urlrequest.build_opener(urlrequest.ProxyHandler({"http": proxy, "https": proxy}))
+        with opener.open(f"https://www.youtube.com/embed/{video_id}", timeout=8) as response:
+            return response.status == 200
+    except Exception:  # noqa: BLE001 - public proxy health check
+        return False
+
+
+def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Resolve a single public video through a cached or freshly checked proxy."""
+    global _working_proxies
+    match = re.search(r"(?:v=|youtu\.be/|/vi/)([A-Za-z0-9_-]{11})", query)
+    if not match:
+        return None
+    video_id = match.group(1)
+
+    def attempt(proxy: str) -> tuple[str, dict[str, Any] | None]:
         try:
-            handler = urlrequest.ProxyHandler({"http": proxy, "https": proxy})
-            opener = urlrequest.build_opener(handler)
-            with opener.open("https://www.youtube.com/embed/" + video_id, timeout=8) as response:
-                return response.status == 200
-        except Exception:  # noqa: BLE001 - proxy health check
-            return False
+            return proxy, _extract_once(query, _proxy_options(extra, proxy))
+        except Exception:  # noqa: BLE001 - try the next public proxy
+            return proxy, None
 
-    # First weed out dead proxies with a cheap, hard-timeout request.
+    now = time.monotonic()
+    with _lock:
+        cached = _working_proxies
+    if cached and cached[0] > now:
+        for proxy in cached[1][:3]:
+            _, info = attempt(proxy)
+            if info is not None:
+                return info
+
+    candidates = _public_proxy_candidates()
+    if not candidates:
+        return None
     alive: list[str] = []
     with ThreadPoolExecutor(max_workers=12) as pool:
-        for proxy, ok in zip(candidates, pool.map(proxy_alive, candidates)):
+        for proxy, ok in zip(candidates, pool.map(lambda p: _proxy_alive(p, video_id), candidates)):
             if ok:
                 alive.append(proxy)
             if len(alive) >= 6:
                 break
+    if not alive:
+        return None
 
-    def check(proxy: str) -> tuple[str, dict[str, Any]]:
-        options = {"proxy": proxy, "retries": 0, "socket_timeout": 10, "fragment_retries": 0}
-        try:
-            with yt_dlp.YoutubeDL(_ydl_options(options)) as ydl:
-                info = ydl.extract_info(url, download=False)
-            return proxy, {"ok": True, "formats": len(info.get("requested_formats") or []), "has_url": bool(info.get("url"))}
-        except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
-            detail = re.sub(r"https?://\S+", "[url]", f"{type(exc).__name__}: {exc}")
-            return proxy, {"ok": False, "error": detail[:140]}
-
-    results: dict[str, Any] = {}
+    chosen: dict[str, Any] | None = None
+    working: list[str] = []
     futures = []
     with ThreadPoolExecutor(max_workers=6) as pool:
-        futures = [pool.submit(check, proxy) for proxy in alive]
-        done, pending = wait(futures, timeout=45)
+        futures = [pool.submit(attempt, proxy) for proxy in alive]
+        done, _ = wait(futures, timeout=45)
         for future in done:
             try:
-                proxy, result = future.result()
-                results[proxy] = result
-            except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
-                results["unknown"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:140]}
+                proxy, info = future.result()
+                if info is not None:
+                    working.append(proxy)
+                    if chosen is None:
+                        chosen = info
+            except Exception:  # noqa: BLE001 - ignore a failed public proxy
+                continue
     for future in futures:
         if not future.done():
             future.cancel()
-    working = [proxy for proxy, result in results.items() if result.get("ok")]
-    return {"ok": bool(working), "alive": alive, "working": working, "results": results}
-
-
-def diagnose_pages(video_id: str) -> dict[str, Any]:
-    """TEMPORARY diagnostic: inspect YouTube pages for embedded player data."""
-    pages = {
-        "watch": f"https://www.youtube.com/watch?v={video_id}",
-        "embed": f"https://www.youtube.com/embed/{video_id}",
-        "nocookie": f"https://www.youtube-nocookie.com/embed/{video_id}",
-        "mobile": f"https://m.youtube.com/watch?v={video_id}",
-        "music": f"https://music.youtube.com/watch?v={video_id}",
-        "legacy": f"https://www.youtube.com/get_video_info?video_id={video_id}&el=embedded",
-    }
-    results: dict[str, Any] = {}
-    for name, url in pages.items():
-        try:
-            request = urlrequest.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"})
-            with urlrequest.urlopen(request, timeout=20) as response:
-                body = response.read(2_000_000).decode("utf-8", "ignore")
-                status = response.status
-        except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
-            detail = re.sub(r"https?://\S+", "[url]", f"{type(exc).__name__}: {exc}")
-            results[name] = {"ok": False, "error": detail[:140]}
-            continue
-        results[name] = {
-            "ok": True,
-            "status": status,
-            "bytes": len(body),
-            "streamingData": "streamingData" in body,
-            "adaptiveFormats": "adaptiveFormats" in body,
-            "loginRequired": "LOGIN_REQUIRED" in body or "Sign in to confirm" in body,
-            "botCheck": "not a bot" in body,
-        }
-    return results
-
-
-def diagnose_clients(video_id: str) -> dict[str, Any]:
-    """TEMPORARY diagnostic: report which yt-dlp player clients resolve a public video."""
-    clients = (
-        "tv", "tv_embedded", "android_vr", "android", "ios",
-        "web_embedded", "web_safari", "web_creator", "mweb", "web", "web_music",
-    )
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    results: dict[str, Any] = {}
-    for client in clients:
-        options = _with_player_client({"retries": 0, "socket_timeout": 15}, client)
-        try:
-            with yt_dlp.YoutubeDL(_ydl_options(options)) as ydl:
-                info = ydl.extract_info(url, download=False)
-            results[client] = {
-                "ok": True,
-                "has_url": bool(info.get("url")),
-                "formats": len(info.get("requested_formats") or []),
-                "title": _text(info.get("title"), 80),
-            }
-        except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
-            detail = re.sub(r"https?://\S+", "[url]", f"{type(exc).__name__}: {exc}")
-            results[client] = {"ok": False, "error": detail[:160]}
-    return results
+    if chosen is not None:
+        with _lock:
+            _working_proxies = (time.monotonic() + PROXY_CACHE_TTL, working[:6])
+    return chosen
 
 
 def _extract(query: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
     # Search normally works from every host, but the player API used for stream
-    # resolution is IP-sensitive. Try the default first, then clients that are
-    # known to resolve public videos without a login or po-token.
+    # resolution is IP-sensitive. Try the default and alternate clients first.
     attempts: list[dict[str, Any] | None] = [extra]
     for client in ("tv_embedded", "android_vr", "web_embedded", "mweb"):
         attempts.append(_with_player_client(extra, client))
@@ -318,16 +316,21 @@ def _extract(query: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in attempts:
         try:
-            with yt_dlp.YoutubeDL(_ydl_options(attempt)) as ydl:
-                info = ydl.extract_info(query, download=False)
-            if isinstance(info, dict):
-                LAST_ERROR = None
-                return info
-            last_error = MusicError(502, "The provider returned an unexpected response.", "bad_provider_data")
+            info = _extract_once(query, attempt)
+            LAST_ERROR = None
+            return info
         except MusicError:
             raise
         except Exception as exc:  # network, extraction, rate limit, region, ...
             last_error = exc
+
+    # Datacenter IPs are often bot-gated by YouTube. A keyless public proxy lets
+    # us resolve public videos without cookies, po-tokens or private API keys.
+    proxied = _extract_via_proxy(query, extra)
+    if proxied is not None:
+        LAST_ERROR = None
+        return proxied
+
     if last_error is not None:
         detail = re.sub(r"https?://\S+", "[url]", f"{type(last_error).__name__}: {last_error}")
         LAST_ERROR = {"at": time.time(), "detail": detail[:240]}

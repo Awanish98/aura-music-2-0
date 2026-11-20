@@ -345,16 +345,6 @@ class AuraApp:
         if method == "GET" and path == "/api/download/apk":
             return self._apk_metadata()
 
-        if method == "GET" and path in ("/api/diag/clients", "/api/diag/pages", "/api/diag/proxies"):
-            video_id = (query.get("id") or [""])[0]
-            if not music_service.VIDEO_ID_RE.fullmatch(video_id):
-                raise ApiError(400, "Invalid video id", "invalid_params")
-            if path == "/api/diag/pages":
-                return HttpResponse.json(200, music_service.diagnose_pages(video_id))
-            if path == "/api/diag/proxies":
-                return HttpResponse.json(200, music_service.diagnose_proxies(video_id))
-            return HttpResponse.json(200, music_service.diagnose_clients(video_id))
-
         if method == "GET" and path.startswith(("/api/catalog/", "/api/stream/", "/api/lyrics")):
             return self._music(method, path, query, headers, ip)
 
