@@ -2,7 +2,7 @@
 
 **AURA MUSIC** is an Android music client rebuilt clean-room on the AURA MUSIC codebase. It pairs a normal music library and streaming experience with a cinematic lyrics and audio-reactivity layer.
 
-**Created & Owned by AURA MUSIC.** · Developed by AURA MUSIC.
+**Created & Owned by Jordan.** · fork from echo.
 
 ---
 
