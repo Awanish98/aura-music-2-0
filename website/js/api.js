@@ -56,7 +56,7 @@ export async function api(path, options = {}) {
 export const endpoints = {
   config: () => api('/config'),
   apk: () => api('/download/apk'),
-  search: (q, limit = 18) => api(`/catalog/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  search: (q, limit = 18, options = {}) => api(`/catalog/search?q=${encodeURIComponent(q)}&limit=${limit}`, options),
   discover: () => api('/catalog/discover'),
   aiSuggest: (input) => api('/ai/suggest', { method: 'POST', timeout: 120000, body: input }),
   lastfmToken: () => api('/lastfm/token', { method: 'POST', timeout: 20000, body: {} }),

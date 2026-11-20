@@ -27,6 +27,17 @@
   background: var(--aura-grad); box-shadow: 0 6px 20px rgba(237,85,100,.28);
 }
 .mini-buttons .play:hover { filter: brightness(1.08); }
+
+/* A deferred play (mobile autoplay policy) waits for the next tap without an
+ * error toast. The pulse is the only affordance needed. */
+.icon-btn.play-pending {
+  animation: aura-play-pulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 0 3px rgba(108,229,255,.22), 0 8px 24px rgba(237,85,100,.28);
+}
+@keyframes aura-play-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
 .mini-progress { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 620px; }
 .mini-progress .time { font-family: var(--font-mono); font-size: 10px; color: var(--faint); min-width: 34px; }
 .mini-progress .time.right { text-align: right; }
@@ -218,4 +229,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .player-art-wrap::before, .player-bg { transition: none; }
+  .icon-btn.play-pending { animation: none; }
 }

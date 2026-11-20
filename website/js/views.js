@@ -5,8 +5,8 @@ import { icon, hydrateIcons } from './icons.js';
 import { LOOKS, VIEW_MODES, MOBILE_STYLES, setLook, setEngine, setMobileStyle } from './lyrics.js';
 import { playQueue, playTrack, addToQueue, removeFromQueue, currentTrack, togglePlay, openFullPlayer } from './player.js';
 import { beginLastfmConnect, completeLastfmConnect, disconnectLastfm, hasPendingConnection } from './lastfm.js';
+import { attachSearchSuggestions } from './suggest.js';
 
-let searchTimer = null;
 let activeNav = '';
 
 const LOOK_OPTIONS = [
@@ -181,10 +181,8 @@ function renderSearch(root, params) {
     const value = root.querySelector('#searchInput')?.value.trim();
     if (value) runSearch(value);
   });
-  root.querySelector('#searchInput')?.addEventListener('input', (e) => {
-    clearTimeout(searchTimer);
-    const value = e.target.value.trim();
-    if (value.length >= 3) searchTimer = setTimeout(() => runSearch(value), 550);
+  attachSearchSuggestions(root.querySelector('#searchInput'), {
+    onPick: (track, queue) => playTrack(track, queue, 'Search suggestion'),
   });
   if (keepFocus) {
     const input = root.querySelector('#searchInput');

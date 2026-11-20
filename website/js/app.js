@@ -3,7 +3,8 @@ import { state, toast, persistSettings } from './state.js';
 import { API_BASE, endpoints } from './api.js';
 import { hydrateIcons, icon } from './icons.js';
 import { initViews, render, runSearch, loadDiscover, loadApk } from './views.js';
-import { initPlayer, closeFullPlayer } from './player.js';
+import { initPlayer, closeFullPlayer, playTrack } from './player.js';
+import { attachSearchSuggestions } from './suggest.js';
 import { initLyrics, closeLyrics, LOOKS, setLook } from './lyrics.js';
 import { initRouter } from './router.js';
 import { initLastfm } from './lastfm.js';
@@ -31,11 +32,15 @@ async function bootstrap() {
   initRouter();
   initLastfm();
 
+  const topInput = document.getElementById('topSearchInput');
   const topForm = document.getElementById('topSearch');
   topForm?.addEventListener('submit', (event) => {
     event.preventDefault();
-    const value = document.getElementById('topSearchInput')?.value.trim();
+    const value = topInput?.value.trim();
     if (value) runSearch(value);
+  });
+  attachSearchSuggestions(topInput, {
+    onPick: (track, queue) => playTrack(track, queue, 'Search suggestion'),
   });
 
   document.getElementById('themeBtn')?.addEventListener('click', () => {

@@ -9,9 +9,12 @@ const overlay = document.getElementById('playerOverlay');
 
 let analyser = null;
 let audioCtx = null;
+let analyserUnavailable = false;
 let vizFrame = null;
 let vizMode = 0;
 let seeking = false;
+let audioUnlocked = false;
+let pendingPlay = false;
 const VIZ_MODES = ['SPECTRUM', 'RADIAL', 'WAVE', 'PARTICLES', 'RINGS', 'AURORA', 'BARS', '3D PATTERN'];
 
 export function currentTrack() {
@@ -35,6 +38,68 @@ function shuffledIndexes(length, keepFirst = 0) {
 }
 
 /* ----------------------------------------------------------------- playback */
+
+/* Mobile browsers can reject play() when the call is not tied to a tap (for
+ * example on auto-advance). Unlock audio on the first real gesture, then retry
+ * silently on the next tap instead of showing a blocking error toast. */
+function isBlockedError(error) {
+  return ['NotAllowedError', 'SecurityError'].includes(error?.name) ||
+    /not allowed|user gesture|playback was prevented/i.test(String(error?.message || ''));
+}
+
+function setPending(value) {
+  if (pendingPlay === value) return;
+  pendingPlay = value;
+  updatePlayState();
+}
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try {
+    const analyserNode = ensureAnalyser();
+    if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+    if (!analyserNode) {
+      // Even without an analyser, a short zero-gain tone primes autoplay.
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) {
+        const ctx = new Ctx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.01);
+        ctx.resume().then(() => ctx.close()).catch(() => {});
+      }
+    }
+  } catch { /* audio unlock is best-effort; play() is still attempted */ }
+}
+
+/** Single play entry point. Never shows a blocking toast: the UI shows a
+ *  pending state and the next gesture retries automatically. */
+function requestPlay() {
+  if (!currentTrack()) return Promise.resolve(false);
+  unlockAudio();
+  if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+  let attempt;
+  try { attempt = audio.play(); } catch (error) { attempt = Promise.reject(error); }
+  if (!attempt || typeof attempt.then !== 'function') { setPending(false); return Promise.resolve(true); }
+  return Promise.resolve(attempt).then(() => {
+    setPending(false);
+    return true;
+  }).catch((error) => {
+    if (isBlockedError(error)) setPending(true);
+    // Network/decode failures surface via the audio error event, never here.
+    return false;
+  });
+}
+
+function retryPending() {
+  if (!pendingPlay || !currentTrack()) return;
+  setPending(false);
+  requestPlay();
+}
 
 export function playQueue(tracks, startIndex = 0, context = '') {
   if (!Array.isArray(tracks) || !tracks.length) return;
@@ -60,15 +125,10 @@ function loadCurrent(autoplay = true) {
   p.position = 0;
   p.duration = track.durationMs || 0;
   const url = track.url && String(track.url).startsWith('blob:') ? track.url : streamUrl(track.id || track.videoId);
+  setPending(false);
   audio.src = url;
   audio.volume = p.volume;
-  if (autoplay) {
-    audio.play().catch((err) => {
-      toast('Playback was blocked. Press play to start audio.', true);
-      state.player.playing = false;
-      updatePlayState();
-    });
-  }
+  if (autoplay) requestPlay();
   addHistory(track);
   renderPlayer();
   updateMediaSession();
@@ -80,11 +140,9 @@ export function togglePlay() {
     toast('Pick a song to start playback.');
     return;
   }
-  if (audio.paused) {
-    audio.play().catch(() => toast('Unable to start playback. Try again.', true));
-  } else {
-    audio.pause();
-  }
+  if (pendingPlay) { requestPlay(); return; }
+  if (audio.paused) requestPlay();
+  else audio.pause();
 }
 
 export function next() {
@@ -305,6 +363,7 @@ export function renderPlayer() {
 
   hydrateIcons(mini);
   hydrateIcons(overlay);
+  updatePlayState();
   updateProgress();
   setupVisualizer();
   if (focusedAction) overlay.querySelector(`[data-action="${focusedAction}"]`)?.focus();
@@ -320,9 +379,10 @@ function escapeHtml(value) {
 
 function updatePlayState() {
   document.querySelectorAll('[data-action="play"]').forEach((btn) => {
-    const label = state.player.playing ? 'Pause' : 'Play';
-    btn.setAttribute('aria-label', label);
-    btn.innerHTML = icon(state.player.playing ? 'pause' : 'play', btn.classList.contains('big') ? 26 : 18);
+    const size = btn.classList.contains('big') ? 26 : 18;
+    btn.classList.toggle('play-pending', pendingPlay);
+    btn.setAttribute('aria-label', pendingPlay ? 'Tap to start audio' : state.player.playing ? 'Pause' : 'Play');
+    btn.innerHTML = icon(state.player.playing ? 'pause' : 'play', size);
   });
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state.player.playing ? 'playing' : 'paused';
   document.dispatchEvent(new CustomEvent('aura:playstate'));
@@ -370,20 +430,30 @@ function updateMediaSession() {
 
 /* --------------------------------------------------------- audio analysis */
 function ensureAnalyser() {
-  if (analyser || audioCtx) return analyser;
+  if (analyser || audioCtx || analyserUnavailable) return analyser;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) { analyserUnavailable = true; return null; }
+  let ctx = null;
+  let source = null;
+  let node = null;
   try {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioCtx.createMediaElementSource(audio);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.72;
-    source.connect(analyser);
-    analyser.connect(audioCtx.destination);
+    ctx = new Ctx();
+    source = ctx.createMediaElementSource(audio);
+    node = ctx.createAnalyser();
+    node.fftSize = 1024;
+    node.smoothingTimeConstant = 0.72;
+    source.connect(node);
+    node.connect(ctx.destination);
+    audioCtx = ctx;
+    analyser = node;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    return analyser;
   } catch {
-    analyser = null;
-    audioCtx = null;
+    analyserUnavailable = true; // a media element source can only be created once
+    try { source?.disconnect(); node?.disconnect(); } catch { /* already detached */ }
+    if (ctx && ctx !== audioCtx) ctx.close().catch(() => {});
+    return null;
   }
-  return analyser;
 }
 
 /** Smoother-than-timeupdate playhead, in milliseconds. */
@@ -554,19 +624,40 @@ function onKey(event) {
   else if (event.key === '/') { event.preventDefault(); document.getElementById('topSearchInput')?.focus(); }
 }
 
+function onGesture(event) {
+  unlockAudio();
+  if (!pendingPlay) return;
+  const target = event.target;
+  // These controls already call requestPlay(); retrying here would double-fire.
+  if (target?.closest?.('[data-action="play"], [data-track]')) return;
+  if (event.type === 'keydown') {
+    if (event.key !== 'Enter' || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName)) return;
+  }
+  retryPending();
+}
+
 export function initPlayer() {
+  // Unlock on the first real interaction, and silently finish a deferred play.
+  for (const type of ['pointerdown', 'touchstart']) {
+    document.addEventListener(type, onGesture, { capture: true, passive: true });
+  }
+  document.addEventListener('keydown', onGesture, { capture: true });
+
   audio.addEventListener('timeupdate', () => { state.player.position = (audio.currentTime || 0) * 1000; updateProgress(); });
   audio.addEventListener('durationchange', () => { if (Number.isFinite(audio.duration)) state.player.duration = audio.duration * 1000; });
   audio.addEventListener('play', () => {
     state.player.playing = true;
+    setPending(false);
     updatePlayState();
     const a = ensureAnalyser();
     if (a && audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
   });
   audio.addEventListener('pause', () => { state.player.playing = false; updatePlayState(); });
   audio.addEventListener('ended', () => {
-    if (state.player.repeat === 'one') { audio.currentTime = 0; audio.play(); }
-    else next();
+    if (state.player.repeat === 'one') {
+      try { audio.currentTime = 0; } catch { /* not seekable */ }
+      requestPlay();
+    } else next();
   });
   audio.addEventListener('error', () => {
     if (!audio.src) return;

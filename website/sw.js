@@ -2,7 +2,7 @@
  * Caches the application shell only. Audio, artwork from third parties and
  * private user data are deliberately never cached here.
  */
-const VERSION = 'aura-web-2.0.6';
+const VERSION = 'aura-web-2.0.7';
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -34,6 +34,7 @@ const SHELL = [
   './js/lastfm.js',
   './js/storage.js',
   './js/views.js',
+  './js/suggest.js',
   './js/icons.js'
 ];
 
