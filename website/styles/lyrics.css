@@ -230,6 +230,7 @@
   .lyrics-scroll { padding: 26vh 6vw; }
   .lyric-line { font-size: clamp(24px, 7vw, 40px); }
   .lyrics-head .auto-note { display: none; }
+  .look-menu { position: fixed; top: 66px; right: 16px; width: min(330px, calc(100vw - 32px)); }
   .lyrics-stage[data-engine="mobile"] .lyrics-scroll { padding: 30vh 6vw; }
   .lyrics-stage[data-engine="mobile"] .lyric-line { font-size: clamp(28px, 8.8vw, 52px); }
   .lyrics-stage[data-look="m-neon"] .lyric-line,

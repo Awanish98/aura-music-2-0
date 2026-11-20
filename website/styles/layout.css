@@ -34,7 +34,8 @@
   color: var(--muted); font-size: 14px; font-weight: 500;
   transition: background var(--t-fast), color var(--t-fast);
 }
-.nav-item [data-icon], .bottom-nav [data-icon] { color: currentColor; opacity: .85; }
+.nav-item [data-icon], .bottom-nav [data-icon] { color: currentColor; opacity: .85; flex: none; }
+.nav-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-item:hover { background: var(--glass); color: var(--fg); }
 .nav-item.active {
   color: var(--fg);
@@ -99,10 +100,12 @@
 .backend-pill.online i { background: var(--green); box-shadow: 0 0 8px var(--green); }
 .backend-pill.offline i { background: var(--primary); }
 .top-apk {
+  display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
   padding: 7px 12px; border-radius: var(--r-pill); color: var(--cyan);
-  border: 1px solid rgba(108,229,255,.32);
+  border: 1px solid rgba(108,229,255,.32); line-height: 1; white-space: nowrap;
 }
+.top-apk [data-icon] { display: inline-flex; color: var(--cyan); }
 
 .view {
   flex: 1; width: 100%; max-width: 1680px; margin: 0 auto;
@@ -121,10 +124,14 @@
 
 @media (max-width: 1060px) {
   :root { --sidebar-w: 76px; }
-  .brand-word, .side-label span, .playlist-link, .nav-item span:not([data-icon]), .apk-cta > span:last-child { display: none; }
-  .nav-item, .apk-cta { justify-content: center; }
-  .side-label { justify-content: center; }
-  .apk-cta { padding: 12px; }
+  .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+  .brand-word, .nav-label, .side-label-text, .playlist-link, .apk-copy { display: none; }
+  .nav-item, .apk-cta {
+    width: 52px; min-height: 44px; margin-left: auto; margin-right: auto;
+    padding-left: 0; padding-right: 0; justify-content: center; flex: none;
+  }
+  .apk-cta { height: 44px; margin-bottom: var(--sp-2); }
+  .side-label { justify-content: center; padding-left: 0; padding-right: 0; }
 }
 
 @media (max-width: 760px) {

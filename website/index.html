@@ -43,24 +43,24 @@
       </a>
 
       <nav class="side-nav" id="sideNav">
-        <a href="#/home" data-nav="home" class="nav-item"><span data-icon="home"></span>Home</a>
-        <a href="#/search" data-nav="search" class="nav-item"><span data-icon="search"></span>Search</a>
-        <a href="#/library" data-nav="library" class="nav-item"><span data-icon="library"></span>Your library</a>
+        <a href="#/home" data-nav="home" class="nav-item" title="Home" aria-label="Home"><span data-icon="home"></span><span class="nav-label">Home</span></a>
+        <a href="#/search" data-nav="search" class="nav-item" title="Search" aria-label="Search"><span data-icon="search"></span><span class="nav-label">Search</span></a>
+        <a href="#/library" data-nav="library" class="nav-item" title="Your library" aria-label="Your library"><span data-icon="library"></span><span class="nav-label">Your library</span></a>
         <div class="nav-divider"></div>
-        <a href="#/musicflow" data-nav="musicflow" class="nav-item"><span data-icon="flow"></span>Music Flow</a>
-        <a href="#/video" data-nav="video" class="nav-item"><span data-icon="video"></span>Videos</a>
-        <a href="#/downloads" data-nav="downloads" class="nav-item"><span data-icon="download"></span>Offline &amp; files</a>
-        <a href="#/lyrics" data-nav="lyrics" class="nav-item"><span data-icon="lyrics"></span>LyricsPlay</a>
+        <a href="#/musicflow" data-nav="musicflow" class="nav-item" title="Music Flow" aria-label="Music Flow"><span data-icon="flow"></span><span class="nav-label">Music Flow</span></a>
+        <a href="#/video" data-nav="video" class="nav-item" title="Videos" aria-label="Videos"><span data-icon="video"></span><span class="nav-label">Videos</span></a>
+        <a href="#/downloads" data-nav="downloads" class="nav-item" title="Offline &amp; files" aria-label="Offline &amp; files"><span data-icon="download"></span><span class="nav-label">Offline &amp; files</span></a>
+        <a href="#/lyrics" data-nav="lyrics" class="nav-item" title="LyricsPlay" aria-label="LyricsPlay"><span data-icon="lyrics"></span><span class="nav-label">LyricsPlay</span></a>
       </nav>
 
       <div class="side-playlists" id="sidePlaylists">
-        <div class="side-label">PLAYLISTS <a href="#/library?tab=playlists" aria-label="Manage playlists" data-icon="plus"></a></div>
+        <div class="side-label"><span class="side-label-text">PLAYLISTS</span> <a href="#/library?tab=playlists" aria-label="Manage playlists" data-icon="plus"></a></div>
         <div id="playlistLinks"></div>
       </div>
 
       <div class="side-foot">
-        <a href="#/download" data-nav="download" class="apk-cta"><span data-icon="download"></span><span>Get Android app<small>v1.4.6 · signed APK</small></span></a>
-        <a href="#/settings" data-nav="settings" class="nav-item"><span data-icon="settings"></span>Settings</a>
+        <a href="#/download" data-nav="download" class="apk-cta" title="Get Android app" aria-label="Get Android app"><span data-icon="download"></span><span class="apk-copy">Get Android app<small>v1.4.6 · signed APK</small></span></a>
+        <a href="#/settings" data-nav="settings" class="nav-item" title="Settings" aria-label="Settings"><span data-icon="settings"></span><span class="nav-label">Settings</span></a>
       </div>
     </aside>
 
@@ -78,7 +78,7 @@
         <div class="top-actions">
           <span class="backend-pill" id="backendPill" title="Backend connection"><i></i><span>CONNECTING</span></span>
           <button type="button" class="icon-btn" id="themeBtn" aria-label="Cycle LyricsPlay look" data-icon="sparkles"></button>
-          <a href="#/download" class="top-apk" data-icon="download">APK</a>
+          <a href="#/download" class="top-apk" aria-label="Get Android app"><span data-icon="download" data-icon-size="14"></span><span>APK</span></a>
         </div>
       </header>
 

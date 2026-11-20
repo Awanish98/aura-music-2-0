@@ -100,3 +100,12 @@ Action verifies both SHA-256 hashes before uploading the final assets.
 Play Console rollout remains a user step (Google account). No credentials were
 entered or stored by the agent; Render login was completed by the user in the
 browser.
+
+## UI alignment QA (2026-11-20)
+
+- Compact 761–1060px sidebar: nav labels are real `.nav-label` spans and hide cleanly; every rail control is a centred 52×44 square with `title`/`aria-label`; the `PLAYLISTS` heading and APK copy no longer wrap.
+- Top-bar APK keeps both its icon and `APK` text after icon hydration: `data-icon` now lives on an inner span, so `hydrateIcons()` no longer wipes the label.
+- Geometry sweep at 320/390/760/800/1000/1060/1440px across home, search, library, musicflow, video, download, settings and lyrics: no horizontal overflow and no clipped text outside intentional scrollers.
+- Narrow fixes: `.settings-grid` becomes one column at ≤400px so download/settings cards fit a 320px viewport; the LyricsPlay look menu is viewport-anchored at ≤700px and stays fully on screen down to 320px.
+- Overlay QA at 320/390/760/1000/1440px: mini-player, full player, LyricsPlay and look menu stay inside the viewport; the bottom nav sits flush above the mini-player. Oversized blurred backgrounds are decorative and clipped by their overlay. No app JavaScript errors were observed.
+- Service worker cache version bumped to `aura-web-2.0.3` so returning users receive the rebuilt shell immediately.
