@@ -10,6 +10,7 @@ import os
 import threading
 import unittest
 from dataclasses import replace
+from unittest.mock import patch
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
@@ -270,6 +271,40 @@ class BackendTests(unittest.TestCase):
         status, body, _ = self.call("GET", "/api/nope")
         self.assertEqual(status, 404)
         self.assertEqual(body["code"], "not_found")
+
+    def test_ai_suggest_requires_vibe_or_mood(self):
+        status, body, _ = self.call("POST", "/api/ai/suggest", {})
+        self.assertEqual(status, 400)
+        self.assertEqual(body["code"], "invalid_vibe")
+
+    def test_ai_suggest_fallback_uses_real_tracks_and_caches(self):
+        def fake_search(query, limit=18):
+            return {"tracks": [{
+                "id": "dQw4w9WgXcQ", "videoId": "dQw4w9WgXcQ",
+                "title": "A Real Track", "artist": "Real Artist",
+                "durationMs": 200000, "artwork": "", "provider": "youtube",
+            }]}
+
+        with patch.object(server.music_service, "search", side_effect=fake_search) as mocked:
+            status, body, headers = self.call(
+                "POST", "/api/ai/suggest", {"mood": "CHILL", "limit": 4}
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(body["degraded"])
+            self.assertEqual(body["source"], "local")
+            self.assertEqual(body["mood"], "CHILL")
+            self.assertEqual(body["theme"], "MIDNIGHT_BLUE")
+            self.assertEqual(len(body["tracks"]), 1)
+            self.assertEqual(body["tracks"][0]["id"], "dQw4w9WgXcQ")
+            self.assertEqual(headers.get("X-AURA-Cache"), "miss")
+            self.assertGreater(mocked.call_count, 0)
+
+            status2, body2, headers2 = self.call(
+                "POST", "/api/ai/suggest", {"mood": "CHILL", "limit": 4}
+            )
+            self.assertEqual(status2, 200)
+            self.assertEqual(headers2.get("X-AURA-Cache"), "hit")
+            self.assertEqual(body2["tracks"], body["tracks"])
 
 
 if __name__ == "__main__":

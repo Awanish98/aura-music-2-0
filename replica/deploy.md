@@ -1,7 +1,7 @@
 # Deploy checklist: AURA MUSIC 2.0
 
-Date: 2026-11-19 · Repository: <https://github.com/Awanish98/aura-music-2-0> ·
-Publish export: `P:\youtube-creat\AURA-Music-2.0-Publish`.
+Date: 2026-11-20 · Repository: <https://github.com/Awanish98/aura-music-2-0> ·
+Publish export: `P:\All-project\P__youtube-creat\AURA-Music-2.0-Publish`.
 
 ## Architecture
 
@@ -29,7 +29,7 @@ with `?api=https://your-backend/api`, which is stored in `localStorage` under
 
 ## Preflight (all local checks green)
 
-- [x] `python backend/test_server.py` — 10 tests, OK.
+- [x] `python backend/test_server.py` — 12 tests, OK (new: AI suggest validation, real-track fallback and cache).
 - [x] `python backend/test_music.py` — 13 tests, OK (new: unknown-uploader artist derivation for lyrics).
 - [x] `python -m py_compile backend/music.py backend/server.py` — OK.
 - [x] `node --check` on `website/config.js`, `website/sw.js` and all `website/js/*.js` — OK.
@@ -72,6 +72,10 @@ Action verifies both SHA-256 hashes before uploading the final assets.
    open LyricsPlay in Cinematic and AMOLED views.
 7. If the Render service name changes, update `website/config.js` or open the site
    once with `?api=https://actual-service.onrender.com/api`.
+8. For AI Mood Radio, add `GROQ_API_KEY` in the Render dashboard for
+   `aura-music-2-0-api` (or apply the Blueprint and fill the `sync:false` value).
+   Never put the key in `website/`, git or a query string. After redeploy,
+   `/api/health` must report `groq_configured: true` and `model: "qwen/qwen3.8-27b"`.
 
 ## Play Console (user steps)
 
@@ -108,4 +112,29 @@ browser.
 - Geometry sweep at 320/390/760/800/1000/1060/1440px across home, search, library, musicflow, video, download, settings and lyrics: no horizontal overflow and no clipped text outside intentional scrollers.
 - Narrow fixes: `.settings-grid` becomes one column at ≤400px so download/settings cards fit a 320px viewport; the LyricsPlay look menu is viewport-anchored at ≤700px and stays fully on screen down to 320px.
 - Overlay QA at 320/390/760/1000/1440px: mini-player, full player, LyricsPlay and look menu stay inside the viewport; the bottom nav sits flush above the mini-player. Oversized blurred backgrounds are decorative and clipped by their overlay. No app JavaScript errors were observed.
-- Service worker cache version bumped to `aura-web-2.0.3` so returning users receive the rebuilt shell immediately.
+- Service worker cache version bumped to `aura-web-2.0.4` so returning users receive the rebuilt shell immediately.
+
+## AI Mood Radio (2026-11-20)
+
+- New public `/api/ai/suggest` sends a mood/vibe to Groq (`qwen/qwen3.8-27b`,
+  strict JSON) and resolves every proposed title/artist through the real
+  provider search. The model only proposes a plan; it never fabricates catalog
+  entries. Responses include `source`, `degraded`, `theme`, `energy`, suggested
+  picks, resolved tracks and `X-AURA-Cache`.
+- The key is server-side only (`GROQ_API_KEY` env var, `sync:false` in
+  `render.yaml`). The browser calls an IP-rate-limited endpoint and cannot read
+  the secret. There is no key in `website/`, git history or URLs. `gpt-oss-20b`
+  failed JSON validation in testing; Qwen returned valid JSON reliably.
+- Local smoke test with the env var set: `/api/health` →
+  `groq_configured:true`, `model:qwen/qwen3.8-27b`; `POST /api/ai/suggest`
+  → `source:"groq"`, `degraded:false`, 4 real resolved tracks. With no key the
+  endpoint degrades to `source:"local"` using real provider results only.
+- New `#/mood` route with 12 mood chips and a free-text vibe field, sidebar and
+  bottom-nav entries, home-page promo chips, loading/error/empty states, and
+  "Play in cinematic lyrics" (classic engine + `CINEMATIC` look + LyricsPlay).
+- Browser QA at 320/390/760/1440px: no horizontal overflow, 6-column bottom nav,
+  12 chips and search fit; home promo chips navigate to `#/mood` and build a mix;
+  `ai-cinematic` opened LyricsPlay with `data-engine="classic"` and
+  `look="cinema"`, started real playback, and produced no console errors.
+- **Pending user step:** add the `GROQ_API_KEY` value in the Render dashboard.
+  Until then the live endpoint returns `source:"local"` (still real tracks).

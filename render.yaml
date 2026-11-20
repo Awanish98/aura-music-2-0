@@ -19,3 +19,7 @@ services:
         value: "*"
       - key: AURA_RELEASE_BASE
         value: https://github.com/Awanish98/aura-music-2-0/releases/download/v1.4.6
+      # Secret is supplied in the Render dashboard / Blueprint environment.
+      # sync:false keeps the value out of the repository and out of git history.
+      - key: GROQ_API_KEY
+        sync: false

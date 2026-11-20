@@ -27,6 +27,7 @@ export const state = {
     context: '',
   },
   lyrics: { data: null, loading: false, error: null, look: null, open: false },
+  ai: { mood: 'CHILL', vibe: '', mix: null, loading: false, error: null },
   flow: { active: false, seed: null, loading: false, seen: new Set() },
   toastTimer: null,
 };
@@ -74,6 +75,7 @@ export function findTrack(id) {
     ...(state.discover?.sections || []).flatMap((s) => s.tracks),
     ...(state.detail?.tracks || []),
     ...(state.flow?.tracks || []),
+    ...(state.ai?.mix?.tracks || []),
   ];
   return all.find((t) => (t.id || t.videoId) === id) || null;
 }

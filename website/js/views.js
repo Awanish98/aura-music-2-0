@@ -19,6 +19,21 @@ const MOBILE_OPTIONS = MOBILE_STYLES.map((style) => ({
   accent: style.accent, signature: style.signature,
 }));
 
+const MOOD_CHIPS = [
+  { mood: 'CHILL', label: 'Chill', emoji: '🌙' },
+  { mood: 'LO_FI', label: 'Lo-fi focus', emoji: '📚' },
+  { mood: 'PARTY', label: 'Party', emoji: '🎉' },
+  { mood: 'ROMANTIC', label: 'Romantic', emoji: '💗' },
+  { mood: 'SAD', label: 'Melancholy', emoji: '🌧️' },
+  { mood: 'MOTIVATIONAL', label: 'Workout', emoji: '🔥' },
+  { mood: 'DREAMY', label: 'Dreamy', emoji: '✨' },
+  { mood: 'DARK', label: 'Dark', emoji: '🖤' },
+  { mood: 'ENERGETIC', label: 'High energy', emoji: '⚡' },
+  { mood: 'EMOTIONAL', label: 'Emotional', emoji: '💫' },
+  { mood: 'AGGRESSIVE', label: 'Heavy', emoji: '🥁' },
+  { mood: 'NEUTRAL', label: 'Feel good', emoji: '🎶' },
+];
+
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
@@ -96,6 +111,12 @@ function renderHome(root) {
         <div class="hero-meta"><span>REAL CATALOG</span><span>WORD-SYNC LYRICS</span><span>NO LOGIN REQUIRED</span></div>
       </div>
       <div class="hero-art" aria-hidden="true"><div class="hero-orbs"><i></i><i></i><i></i><span class="hero-core"></span></div></div>
+    </section>
+    <section class="view-section ai-home">
+      <div class="section-head"><div><div class="eyebrow">AI MOOD RADIO · NEW</div><h2>What do you feel like hearing?</h2></div>
+        <a class="link" href="#/mood">Open Mood Radio →</a></div>
+      <p class="ai-home-sub">Pick a feeling. AURA builds a real, playable mix and can open it in cinematic LyricsPlay.</p>
+      <div class="mood-chips compact">${MOOD_CHIPS.slice(0, 6).map((m) => `<button type="button" class="mood-chip" data-action="ai-mood" data-value="${esc(m.mood)}"><span aria-hidden="true">${m.emoji}</span><strong>${esc(m.label)}</strong></button>`).join('')}</div>
     </section>
     ${recent.length ? section('Continue listening', 'YOUR RECENT PLAYS', recent) : ''}
     ${d ? d.sections.map((s, i) => section(s.title, i === 0 ? 'TRENDING NOW · REAL RESULTS' : 'AURA DISCOVERY', s.tracks, `#/search?q=${encodeURIComponent(s.title)}`)).join('')
@@ -485,6 +506,93 @@ function renderSettings(root) {
     </div>`;
 }
 
+/* ------------------------------------------------------------ mood radio */
+function moodPill(mood) {
+  return String(mood || '').replaceAll('_', ' ').toLowerCase();
+}
+
+function renderMood(root) {
+  const ai = state.ai;
+  const caps = state.config?.capabilities || {};
+  const sourceNote = !caps.aiSuggest ? 'AI CURATOR VIA AURA BACKEND'
+    : state.config?.groqConfigured ? 'POWERED BY GROQ AI'
+      : 'SMART CURATION · ADD GROQ_API_KEY FOR AI CURATION';
+  const mix = ai.mix;
+  const tracks = mix?.tracks || [];
+  root.innerHTML = `
+    <section class="ai-hero">
+      <div class="eyebrow">AI MOOD RADIO · AURA CURATOR</div>
+      <h1>Tell us the feeling.<br><em>We'll find the songs.</em></h1>
+      <p>Pick a mood or describe any vibe — a rainy night drive, a breakup, a gym session. AURA builds a queue of real, playable tracks and can open it straight in cinematic LyricsPlay.</p>
+      <form class="ai-search" id="aiVibeForm">
+        <span data-icon="sparkles" aria-hidden="true"></span>
+        <input id="aiVibeInput" type="text" maxlength="160" placeholder="e.g. rainy night drive with dreamy synths" value="${esc(ai.vibe)}" aria-label="Describe your vibe">
+        <button type="submit" class="btn primary" aria-label="Build my mix">${icon('sparkles', 16)} Build my mix</button>
+      </form>
+      <div class="ai-source">${esc(sourceNote)}</div>
+    </section>
+
+    <section class="view-section">
+      <div class="section-head"><div><div class="eyebrow">START WITH A FEELING</div><h2>Mood radio</h2></div></div>
+      <div class="mood-chips">${MOOD_CHIPS.map((m) => `<button type="button" class="mood-chip ${ai.mood === m.mood ? 'active' : ''}" data-action="ai-mood" data-value="${esc(m.mood)}" aria-pressed="${ai.mood === m.mood}"><span aria-hidden="true">${m.emoji}</span><strong>${esc(m.label)}</strong></button>`).join('')}</div>
+    </section>
+
+    <section class="view-section">
+      <div class="section-head"><div><div class="eyebrow">YOUR MIX</div><h2>${mix ? `${esc(moodPill(mix.mood))} radio` : 'Ready when you are'}</h2></div>
+        ${tracks.length ? `<button type="button" class="btn sm" data-action="ai-save">${icon('playlist', 15)} Save playlist</button>` : ''}</div>
+      ${ai.loading ? `<div class="ai-loading"><span class="ai-spinner" aria-hidden="true"></span> Curating real tracks for “${esc(ai.vibe || moodPill(ai.mood))}”…</div>` : ''}
+      ${ai.error ? `<div class="empty-state error-state"><span class="icon-badge">${icon('info', 28)}</span><strong>Mix unavailable</strong><span>${esc(ai.error)}</span><button type="button" class="btn" data-action="ai-retry">${icon('refresh', 15)} Retry</button></div>` : ''}
+      ${!ai.loading && !ai.error && !mix ? empty('No mix yet', 'Pick a mood above or describe a vibe to build a real track queue.') : ''}
+      ${!ai.loading && mix ? `
+        <div class="ai-mix-note">
+          <span class="pill">${mix.source === 'groq' ? 'AI CURATED' : 'SMART CURATED'}</span>
+          <span class="pill">${esc(moodPill(mix.mood))}</span>
+          <span class="pill">${esc(moodPill(mix.theme))}</span>
+          <span class="pill">${tracks.length} REAL TRACKS</span>
+          <p>${esc(mix.explanation)}</p>
+        </div>
+        ${tracks.length ? `
+          <div class="hero-actions" style="margin:14px 0 18px">
+            <button type="button" class="btn primary" data-action="ai-play">${icon('play', 17)} Play ${tracks.length} tracks</button>
+            <button type="button" class="btn" data-action="ai-cinematic">${icon('lyrics', 17)} Play in cinematic lyrics</button>
+          </div>
+          <div class="track-list">${tracks.map((t, i) => trackRow(t, i)).join('')}</div>`
+        : `<div class="empty-state"><strong>No playable tracks found</strong><span>Try a broader vibe — the provider could not resolve this one right now.</span></div>`}
+      ` : ''}
+    </section>`;
+
+  hydrateIcons(root);
+  root.querySelector('#aiVibeForm')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const value = root.querySelector('#aiVibeInput')?.value.trim();
+    if (value) runAiMix({ vibe: value });
+  });
+}
+
+export async function runAiMix(input = {}) {
+  const body = input.vibe
+    ? { vibe: input.vibe, limit: 8 }
+    : { mood: input.mood || state.ai.mood, limit: 8 };
+  state.ai.loading = true;
+  state.ai.error = null;
+  state.ai.vibe = input.vibe || '';
+  if (input.mood) state.ai.mood = input.mood;
+  if (state.route === '/mood') render(document.getElementById('view'), '/mood');
+  try {
+    const mix = await endpoints.aiSuggest(body);
+    state.ai.mix = mix;
+    if (mix.mood) state.ai.mood = mix.mood;
+    toast(mix.degraded ? 'Mix ready from real provider results' : 'AI mix ready');
+  } catch (error) {
+    state.ai.error = error.message;
+    state.ai.mix = null;
+    toast(error.message, true);
+  } finally {
+    state.ai.loading = false;
+    if (state.route === '/mood') render(document.getElementById('view'), '/mood');
+  }
+}
+
 /* --------------------------------------------------------------- routing */
 export function render(root, path) {
   const [routePart, queryString = ''] = path.split('?');
@@ -500,6 +608,7 @@ export function render(root, path) {
   else if (route === '/history') renderHistory(root);
   else if (route === '/queue') renderQueue(root);
   else if (route === '/musicflow') renderFlow(root);
+  else if (route === '/mood') renderMood(root);
   else if (route === '/video') renderVideos(root, params);
   else if (route === '/downloads') renderDownloads(root);
   else if (route === '/download') renderDownload(root);
@@ -558,6 +667,31 @@ function onClick(event) {
     const all = [...(state.discover?.sections || []).flatMap((s) => s.tracks), ...(state.search.results?.tracks || [])];
     if (all.length) { const t = all[Math.floor(Math.random() * all.length)]; playTrack(t, all, 'AURA picks'); }
     else loadDiscover(true);
+  } else if (action === 'ai-mood') {
+    state.ai.mood = value;
+    state.ai.vibe = '';
+    if (state.route !== '/mood') {
+      render(document.getElementById('view'), '/mood');
+      location.hash = '#/mood';
+    }
+    runAiMix({ mood: value });
+  } else if (action === 'ai-retry') {
+    runAiMix({ mood: state.ai.mood, vibe: state.ai.vibe });
+  } else if (action === 'ai-play') {
+    const list = state.ai.mix?.tracks || [];
+    if (list.length) playQueue(list, 0, 'AI Mood Radio');
+  } else if (action === 'ai-cinematic') {
+    const list = state.ai.mix?.tracks || [];
+    if (!list.length) return;
+    setEngine('classic');
+    setLook('CINEMATIC');
+    playQueue(list, 0, 'AI Mood Radio');
+    document.dispatchEvent(new CustomEvent('aura:openlyrics', { detail: { track: list[0] } }));
+  } else if (action === 'ai-save') {
+    const list = state.ai.mix?.tracks || [];
+    if (!list.length) return;
+    makePlaylist(`${moodPill(state.ai.mood)} radio`, list);
+    toast('Mix saved as a playlist');
   } else if (action === 'fav') {
     const t = findTrack(value) || allTracksInView().find((x) => (x.id || x.videoId) === value);
     if (t) { toggleFavorite(t); render(document.getElementById('view'), location.hash.slice(1)); }

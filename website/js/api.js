@@ -58,6 +58,7 @@ export const endpoints = {
   apk: () => api('/download/apk'),
   search: (q, limit = 18) => api(`/catalog/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   discover: () => api('/catalog/discover'),
+  aiSuggest: (input) => api('/ai/suggest', { method: 'POST', timeout: 120000, body: input }),
   related: (track) => api(`/catalog/related?id=${encodeURIComponent(track.id)}&artist=${encodeURIComponent(track.artist || '')}&title=${encodeURIComponent(track.title || '')}`),
   lyrics: (track) => api(`/lyrics?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist || '')}&duration=${Math.round(track.durationMs || 0)}`),
   streamInfo: (id) => api(`/stream/info?id=${encodeURIComponent(id)}`),
