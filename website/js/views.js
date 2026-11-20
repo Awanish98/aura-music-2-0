@@ -507,10 +507,11 @@ function renderSettings(root) {
   root.innerHTML = `<div class="section-head"><div><div class="eyebrow">PREFERENCES · STORED LOCALLY</div><h1>Settings</h1></div></div>
     <div class="settings-grid">
       <div class="panel"><h3>LyricsPlay</h3>
-        <div class="setting-row"><div>Lyrics engine<small>Classic keeps all 18 original looks. Mobile adds word-by-word beat sync.</small></div></div>
-        <div class="mode-switch" role="group" aria-label="Lyrics engine">
-          <button type="button" data-action="set-engine" data-value="classic" class="${s.lyricEngine !== 'mobile' ? 'active' : ''}">Classic view</button>
+        <div class="setting-row"><div>Lyrics engine<small>Classic keeps all 18 original looks. Mobile adds beat sync; Word Flow is the cinematic scattered-word stage.</small></div></div>
+        <div class="mode-switch engine-switch" role="group" aria-label="Lyrics engine">
+          <button type="button" data-action="set-engine" data-value="classic" class="${s.lyricEngine === 'classic' ? 'active' : ''}">Classic</button>
           <button type="button" data-action="set-engine" data-value="mobile" class="${s.lyricEngine === 'mobile' ? 'active' : ''}">Mobile · word sync</button>
+          <button type="button" data-action="set-engine" data-value="wordflow" class="${s.lyricEngine === 'wordflow' ? 'active' : ''}">Word Flow</button>
         </div>
         <div class="setting-row"><div>Classic default look<small>All 18 original looks stay available. AUTO matches the playing song's mood.</small></div></div>
         <div class="look-grid">${lookTiles}</div>
@@ -664,16 +665,18 @@ export function render(root, path) {
   else if (route === '/settings') renderSettings(root);
   else if (route === '/lyrics') {
     root.innerHTML = `<div class="section-head"><div><div class="eyebrow">PREMIUM LYRICSPLAY</div><h1>Synced, cinematic lyrics</h1></div></div>
-      <p>Search and preview lyrics before playback, or open the overlay for the song that is playing. Timed words come from LRCLIB; the 18 classic looks and the new mobile word-sync engine never alter the words.</p>
+      <p>Search and preview lyrics before playback, or open the overlay for the song that is playing. Timed words come from LRCLIB; the 18 classic looks, mobile word-sync engine and cinematic Word Flow stage never alter the words.</p>
       <div class="hero-actions"><button type="button" class="btn primary" data-action="open-lyrics">${icon('lyrics', 17)} Find lyrics / open LyricsPlay</button>
         <button type="button" class="btn" data-action="open-full">${icon('waveform', 17)} Full player</button></div>
       <div class="lyric-view-callout"><div><span class="eyebrow">ANDROID-EQUIVALENT VIEWS</span><strong>Cinematic</strong><small>Warm letterbox glow and film-halo type.</small></div>
         <div><span class="eyebrow">TRUE AMOLED</span><strong>AMOLED</strong><small>Pure black canvas, white words, minimal bloom.</small></div>
-        <div><span class="eyebrow">NEW · MOBILE WORD SYNC</span><strong>InstaLrc + AMOLED Word Flow</strong><small>Words pop, sway and reveal one by one on the beat.</small></div></div>
+        <div><span class="eyebrow">NEW · MOBILE WORD SYNC</span><strong>InstaLrc + AMOLED Word Flow</strong><small>Words pop, sway and reveal one by one on the beat.</small></div>
+        <div><span class="eyebrow">NEW · CINEMATIC WORD FLOW</span><strong>Scattered word stage</strong><small>Dim serif words drift on black; one lavender word lights up at a time.</small></div></div>
       <div class="view-section"><div class="section-head"><h2>Mobile · word-by-word (new)</h2></div>
-        <div class="mode-switch" role="group" aria-label="Lyrics engine">
-          <button type="button" data-action="set-engine" data-value="classic" class="${state.settings.lyricEngine !== 'mobile' ? 'active' : ''}">Classic view</button>
+        <div class="mode-switch engine-switch" role="group" aria-label="Lyrics engine">
+          <button type="button" data-action="set-engine" data-value="classic" class="${state.settings.lyricEngine === 'classic' ? 'active' : ''}">Classic</button>
           <button type="button" data-action="set-engine" data-value="mobile" class="${state.settings.lyricEngine === 'mobile' ? 'active' : ''}">Mobile · word sync</button>
+          <button type="button" data-action="set-engine" data-value="wordflow" class="${state.settings.lyricEngine === 'wordflow' ? 'active' : ''}">Word Flow · cinematic</button>
         </div>
         <div class="look-grid">${MOBILE_OPTIONS.map((l) => `<button type="button" class="look-tile ${state.settings.mobileStyle === l.look ? 'active' : ''}" data-action="set-mobile-style" data-value="${esc(l.look)}" title="${esc(l.signature || '')}"><i style="background:linear-gradient(135deg,${l.primary},${l.accent})"></i>${esc(l.name)}</button>`).join('')}</div></div>
       <div class="view-section"><div class="section-head"><h2>Classic · 15 signature looks + 2 views</h2></div>

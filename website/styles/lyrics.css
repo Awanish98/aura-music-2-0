@@ -282,3 +282,153 @@
   }
   .lyrics-stage[data-engine="mobile"] .lyric-word::after { transform: none; }
 }
+
+/* ------------------------------------------------ WORDFLOW · cinematic stage
+ * Additive third engine. Nothing here targets .lyric-line, so classic and
+ * mobile lyrics keep their exact typography, timing and entry behaviour.
+ * The visualizer writes position/size/opacity vars on a small window of words.
+ */
+.mode-switch.engine-switch { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.wf-menu-note {
+  padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--glass); color: var(--fg);
+}
+.wf-menu-note strong { display: block; font-size: 12px; }
+.wf-menu-note small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+.lyrics-stage.wf-stage { display: block; padding: 0; background: #000; color: #eee8ff; }
+.wf-atmosphere {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(64% 48% at 50% 46%, rgba(139, 92, 246, .075), transparent 72%),
+    radial-gradient(80% 60% at 12% 100%, rgba(76, 29, 149, .05), transparent 70%),
+    #000;
+}
+.wf-stage .lyrics-head {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  padding: clamp(16px, 3vw, 30px) clamp(16px, 4vw, 42px);
+  opacity: .42; transition: opacity 320ms ease;
+}
+.wf-stage[data-controls="1"] .lyrics-head { opacity: 1; }
+.wf-stage .lyrics-head .look-name { color: #c4b5fd; }
+.wf-stage .lyrics-head .view-badge { border-color: rgba(196, 181, 253, .35); color: #c4b5fd; }
+.wf-stage .lyrics-head-actions { position: relative; z-index: 7; }
+.wf-stage .lyrics-head-actions .icon-btn { color: #e9e2ff; }
+
+.wf-host { position: absolute; inset: 0; z-index: 2; overflow: hidden; }
+.wf-layer { position: absolute; inset: 0; }
+.wf-word {
+  position: absolute; left: var(--wf-left); top: var(--wf-top); z-index: 1;
+  transform: translate(-50%, -50%) translateY(var(--wf-drift, 0px)) rotate(var(--wf-rot, 0deg)) scale(var(--wf-scale, 1));
+  opacity: var(--wf-opacity, .06); filter: blur(var(--wf-blur, 1px));
+  pointer-events: none; will-change: transform, opacity, filter;
+  transition: opacity 280ms ease, filter 280ms ease, transform 220ms cubic-bezier(.2, 0, 0, 1);
+}
+.wf-word.is-current { z-index: 3; }
+.wf-word-inner { position: relative; display: inline-block; }
+.wf-word-inner::after {
+  content: ''; position: absolute; left: 6%; right: 6%; bottom: -.16em; height: 1px;
+  border-radius: 999px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(196, 181, 253, .92), transparent);
+  box-shadow: 0 0 8px rgba(167, 139, 250, .55);
+  opacity: var(--wf-underline, 0); transform: scaleX(var(--wf-underline, 0));
+  transform-origin: center; transition: opacity 220ms ease, transform 260ms ease;
+}
+.wf-word-float { display: inline-block; animation: wf-float var(--wf-dur, 7s) ease-in-out var(--wf-delay, 0s) infinite alternate; }
+@keyframes wf-float {
+  from { transform: translate3d(0, -3px, 0); }
+  to { transform: translate3d(0, 3px, 0); }
+}
+.wf-text {
+  display: inline-block; font-family: Georgia, "Times New Roman", serif;
+  font-style: italic; font-weight: 400; font-size: var(--wf-size, 24px);
+  line-height: 1.05; letter-spacing: .012em; white-space: nowrap;
+  color: rgba(224, 216, 240, .78); text-shadow: none;
+}
+.wf-word.is-upcoming .wf-text { color: rgba(214, 208, 230, .55); }
+.wf-word.is-sung .wf-text { color: rgba(198, 190, 216, .62); }
+.wf-word.is-current .wf-text {
+  color: #cbb7ff;
+  text-shadow: 0 0 14px rgba(167, 139, 250, .65), 0 0 34px rgba(139, 92, 246, .38);
+}
+
+.wf-message {
+  position: absolute; inset: 0; z-index: 4; display: grid; place-items: center;
+  padding: 90px 24px 150px; pointer-events: none;
+}
+.wf-message-card {
+  max-width: 340px; text-align: center; pointer-events: auto;
+  padding: 20px; border: 1px solid var(--line); border-radius: var(--r-md);
+  background: rgba(8, 7, 14, .72); backdrop-filter: blur(18px);
+}
+.wf-message-card strong { display: block; font-size: 14px; color: #e9e2ff; }
+.wf-message-card span { display: block; margin-top: 8px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.wf-message-actions { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+
+.wf-footer {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 22px clamp(16px, 5vw, 48px) calc(20px + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, .72) 68%);
+}
+.wf-hint {
+  pointer-events: auto; border: 0; background: transparent; cursor: pointer;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: rgba(226, 218, 245, .58);
+  padding: 6px 10px; border-radius: 999px;
+}
+.wf-hint:hover, .wf-hint:focus-visible { color: #cbb7ff; background: rgba(196, 181, 253, .08); }
+.wf-progress {
+  pointer-events: auto; position: relative; width: min(88vw, 720px); height: 2px;
+  padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+  background: rgba(255, 255, 255, .14); overflow: visible;
+}
+.wf-progress::before {
+  content: ''; position: absolute; inset: -12px 0; /* comfortable tap target */
+}
+.wf-progress-fill {
+  position: absolute; inset: 0; display: block; border-radius: inherit;
+  transform: scaleX(0); transform-origin: left center;
+  background: linear-gradient(90deg, rgba(196, 181, 253, .55), #cbb7ff);
+  box-shadow: 0 0 10px rgba(167, 139, 250, .5);
+}
+.wf-times {
+  width: min(88vw, 720px); display: flex; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 10px; color: rgba(226, 218, 245, .45);
+}
+.wf-controls {
+  display: flex; align-items: center; gap: 14px; margin-top: 4px;
+  opacity: 0; transform: translateY(10px); pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+.wf-stage[data-controls="1"] .wf-controls { opacity: 1; transform: none; pointer-events: auto; }
+.wf-control {
+  display: grid; place-items: center; width: 42px; height: 42px;
+  border: 1px solid rgba(196, 181, 253, .22); border-radius: 50%;
+  background: rgba(18, 14, 30, .72); color: #e9e2ff; cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.wf-control:hover, .wf-control:focus-visible {
+  background: rgba(196, 181, 253, .14); border-color: rgba(196, 181, 253, .5); transform: translateY(-1px);
+}
+.wf-control-play { width: 54px; height: 54px; color: #cbb7ff; border-color: rgba(196, 181, 253, .45); }
+.wf-control-close { border-color: rgba(255, 255, 255, .14); color: rgba(233, 226, 255, .75); }
+
+.wf-stage[data-reduced="1"] .wf-word,
+.wf-stage[data-reduced="1"] .wf-word-inner::after { transition: none; }
+.wf-stage[data-reduced="1"] .wf-word-float { animation: none; }
+
+@media (max-width: 700px) {
+  .mode-switch.engine-switch button { padding: 8px 5px; font-size: 10px; }
+  .wf-stage .lyrics-head { padding: 18px 16px; }
+  .wf-stage .lyrics-head .auto-note { display: none; }
+  .wf-footer { gap: 8px; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .wf-progress, .wf-times { width: 88vw; }
+  .wf-controls { gap: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-word, .wf-word-inner::after, .wf-controls, .wf-stage .lyrics-head { transition: none; }
+  .wf-word-float { animation: none; }
+}

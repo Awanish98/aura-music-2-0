@@ -1,12 +1,14 @@
 /* LyricsPlay — genuine LRCLIB word timings.
  * CLASSIC: 15 AURA looks, Cinematic + AMOLED views, AUTO mood matching.
  * MOBILE:  word-by-word, beat-reactive engine (AMOLED Word Flow + InstaLrc presets).
+ * WORDFLOW: cinematic scattered-word stage driven by the same audio clock.
  * Words and timestamps are never altered — only their presentation.
  */
 import { state, emit, persistSettings } from './state.js';
 import { endpoints } from './api.js';
 import { icon, hydrateIcons } from './icons.js';
-import { currentTrack, seek, playTrack, getPositionMs, getAudioEnergy } from './player.js';
+import { currentTrack, seek, playTrack, getPositionMs, getAudioEnergy, togglePlay, next, prev } from './player.js';
+import { WordFlowVisualizer } from './wordflow.js';
 
 /* name|look|font|primary|accent|glow|speed|signature — exact AURA catalog. */
 const CATALOG_TEXT = `
@@ -48,6 +50,18 @@ export const MOBILE_STYLES = [
   { id: 'M_AFTERGLOW', name: 'Afterglow', look: 'm-afterglow', primary: '#FF6B57', accent: '#FF8A5B', glow: '#FFB066', speed: 0.7, intensity: 0.6, animation: 'WORD_BY_WORD', signature: 'Warm words drift up through a soft bloom' },
 ];
 
+/* Third engine: one immersive look, not a 19th classic preset. */
+export const WORDFLOW_STYLE = {
+  id: 'WORDFLOW',
+  name: 'Word Flow',
+  look: 'wordflow',
+  primary: '#EDE7FF',
+  accent: '#C4B5FD',
+  glow: '#8B5CF6',
+  speed: 0.7,
+  signature: 'Scattered words, one lavender highlight, pure black stage',
+};
+
 const MODE_BY_ID = Object.fromEntries(VIEW_MODES.map((mode) => [mode.id, mode]));
 const MOBILE_BY_ID = Object.fromEntries(MOBILE_STYLES.map((m) => [m.id, m]));
 
@@ -87,6 +101,9 @@ let searchError = '';
 let searchLoading = false;
 let mobileFrame = null;
 let touchedWords = new Set();
+let wordflow = null;
+let wordflowFrame = null;
+let wordflowControlTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -108,6 +125,18 @@ function isPreview() {
 
 function isMobile() {
   return state.settings.lyricEngine === 'mobile';
+}
+
+function isWordflow() {
+  return state.settings.lyricEngine === 'wordflow';
+}
+
+function engineLabel() {
+  return isWordflow() ? 'wordflow' : isMobile() ? 'mobile' : 'classic';
+}
+
+function nextEngine() {
+  return isWordflow() ? 'classic' : isMobile() ? 'wordflow' : 'mobile';
 }
 
 function hash(text) {
@@ -138,8 +167,9 @@ function resolvedLook() {
   return LOOKS.find((l) => l.look === group[hash(track.title) % group.length]) || LOOKS[0];
 }
 
-/* One style resolver for both engines. Classic output is byte-for-byte the old look. */
+/* One style resolver for all three engines. Classic output stays byte-for-byte the old look. */
 function currentStyle() {
+  if (isWordflow()) return { ...WORDFLOW_STYLE, mode: 'wordflow', engine: 'wordflow' };
   if (isMobile()) {
     const style = MOBILE_BY_ID[state.settings.mobileStyle] || MOBILE_STYLES[0];
     return { ...style, mode: 'mobile', engine: 'mobile' };
@@ -165,6 +195,7 @@ export function openLyrics(track = null) {
 
 export function closeLyrics() {
   stopMobileLoop();
+  destroyWordflow();
   overlay.hidden = true;
   overlay.classList.remove('open');
   document.body.classList.remove('overlay-open');
@@ -213,23 +244,31 @@ function lookMenu() {
     ...VIEW_MODES.map((mode) => ({ ...mode, id: mode.id })),
     ...LOOKS.map((l) => ({ ...l, id: l.look })),
   ];
-  const engine = isMobile() ? 'mobile' : 'classic';
-  const options = isMobile() ? MOBILE_STYLES : classic;
+  const engine = engineLabel();
+  const options = isWordflow() ? [] : isMobile() ? MOBILE_STYLES : classic;
   const activeId = isMobile() ? state.settings.mobileStyle : state.settings.lyricLook;
   const action = isMobile() ? 'mobile-style' : 'look';
+  const groupLabel = isWordflow()
+    ? 'CINEMATIC · SCATTERED WORD FLOW'
+    : isMobile() ? 'INSTALRC + AMOLED · WORD ENGINE' : 'CLASSIC · 15 LOOKS + 2 VIEWS';
+  const styleOptions = isWordflow()
+    ? `<div class="wf-menu-note"><strong>Word Flow</strong><small>Words drift across a true-black stage. The active word turns lavender with a soft underline.</small></div>`
+    : options.map((o) => styleButton(o, action, activeId)).join('');
   return `<div class="look-menu" role="menu" aria-label="LyricsPlay styles">
-    <div class="mode-switch" role="group" aria-label="Lyrics engine">
+    <div class="mode-switch engine-switch" role="group" aria-label="Lyrics engine">
       <button type="button" role="menuitem" data-lyr="engine" data-engine="classic" class="${engine === 'classic' ? 'active' : ''}">Classic</button>
-      <button type="button" role="menuitem" data-lyr="engine" data-engine="mobile" class="${engine === 'mobile' ? 'active' : ''}">Mobile · word sync</button>
+      <button type="button" role="menuitem" data-lyr="engine" data-engine="mobile" class="${engine === 'mobile' ? 'active' : ''}">Mobile</button>
+      <button type="button" role="menuitem" data-lyr="engine" data-engine="wordflow" class="${engine === 'wordflow' ? 'active' : ''}">Word Flow</button>
     </div>
-    <div class="menu-group-label">${isMobile() ? 'INSTALRC + AMOLED · WORD ENGINE' : 'CLASSIC · 15 LOOKS + 2 VIEWS'}</div>
-    ${options.map((o) => styleButton(o, action, activeId)).join('')}
+    <div class="menu-group-label">${groupLabel}</div>
+    ${styleOptions}
   </div>`;
 }
 
 function stageHeader(look) {
-  const label = !isMobile() && state.settings.lyricLook === 'AUTO' ? 'AUTO · ' + look.name : look.name;
-  const chip = isMobile() ? 'MOBILE · WORD SYNC' : 'CLASSIC VIEW';
+  const label = !isMobile() && !isWordflow() && state.settings.lyricLook === 'AUTO' ? 'AUTO · ' + look.name : look.name;
+  const chip = isWordflow() ? 'WORD FLOW · CINEMATIC' : isMobile() ? 'MOBILE · WORD SYNC' : 'CLASSIC VIEW';
+  const toggleLabel = isWordflow() ? 'Switch to classic lyrics' : isMobile() ? 'Switch to Word Flow' : 'Switch to mobile lyrics';
   return `<header class="lyrics-head">
     <div class="lhead-copy">
       <div class="look-name">${escapeHtml(label)}</div>
@@ -237,7 +276,7 @@ function stageHeader(look) {
       <span class="view-badge">${chip}</span>
     </div>
     <div class="lyrics-head-actions">
-      ${isMobile() ? `<button type="button" class="icon-btn" data-lyr="engine-toggle" aria-label="Switch to classic lyrics" title="Switch to classic">${icon('sparkles')}</button>` : ''}
+      ${engineLabel() !== 'classic' ? `<button type="button" class="icon-btn" data-lyr="engine-toggle" aria-label="${toggleLabel}" title="${toggleLabel}">${icon('sparkles')}</button>` : ''}
       <button type="button" class="icon-btn" data-lyr="find" aria-label="Find other lyrics" title="Find other lyrics">${icon('search')}</button>
       <div class="look-picker">
         <button type="button" class="icon-btn" data-lyr="menu" aria-label="Choose LyricsPlay style" aria-expanded="${menuOpen}">${icon('sparkles')}</button>
@@ -248,7 +287,59 @@ function stageHeader(look) {
   </header>`;
 }
 
+function resetLyricNodes() {
+  activeLine = -1; activeWord = -1; lineNodes = []; wordNodes = [];
+  touchedWords = new Set();
+}
+
+function wordflowMessage(loading) {
+  if (loading) return `<div class="wf-message-card"><strong>Loading synced lyrics…</strong><span>Fetching real timed lyrics from the provider.</span></div>`;
+  if (state.lyrics.error) return `<div class="wf-message-card"><strong>Lyrics unavailable</strong><span>${escapeHtml(state.lyrics.error)}</span>
+    <div class="wf-message-actions"><button type="button" class="btn sm" data-lyr="retry">${icon('refresh', 15)} Retry</button>
+    <button type="button" class="btn sm" data-lyr="find">Search another song</button></div></div>`;
+  if (!state.lyrics.data?.lines?.length) return `<div class="wf-message-card"><strong>No lyrics for this track</strong><span>Word Flow needs timed lyrics. Try another song or search again.</span>
+    <div class="wf-message-actions"><button type="button" class="btn sm" data-lyr="find">Find lyrics</button></div></div>`;
+  if (!state.lyrics.data.lines.some((line) => line.words?.length)) return `<div class="wf-message-card"><strong>No timed words</strong><span>This track has lines but no word timings for the scattered stage.</span>
+    <div class="wf-message-actions"><button type="button" class="btn sm" data-lyr="find">Find lyrics</button></div></div>`;
+  return '';
+}
+
+function renderWordflowShell(track, loading) {
+  const look = currentStyle();
+  const timing = state.lyrics.data?.approximateWords ? 'Approx. word timing' : 'Word timing';
+  const message = wordflowMessage(loading);
+  const playIcon = !isPreview() && state.player.playing ? 'pause' : 'play';
+  overlay.innerHTML = `
+    <div class="lyrics-stage wf-stage" data-engine="wordflow" data-look="wordflow" data-mode="wordflow" data-anim="WORDFLOW" data-controls="0" data-reduced="${state.settings.reducedMotion ? '1' : '0'}" style="${lookStyle(look)}">
+      <div class="wf-atmosphere"></div>
+      ${stageHeader(look)}
+      <div class="wf-host" data-role="wf-host" aria-hidden="true"></div>
+      ${message ? `<div class="wf-message" data-role="wf-message">${message}</div>` : ''}
+      <p class="sr-only" data-role="status" role="status" aria-live="polite"></p>
+      <footer class="wf-footer">
+        <button type="button" class="wf-hint" data-lyr="wf-reveal">${escapeHtml(timing)} · tap for controls</button>
+        <button type="button" class="wf-progress" data-wf="seek" data-role="wf-progress" aria-label="Seek playback">
+          <span class="wf-progress-fill" data-role="wf-progress-fill"></span>
+        </button>
+        <div class="wf-times"><span data-role="cur">0:00</span><span data-role="dur">0:00</span></div>
+        <div class="wf-controls" data-role="wf-controls">
+          <button type="button" class="wf-control" data-wf="prev" aria-label="Previous track" title="Previous track">${icon('prev', 19)}</button>
+          <button type="button" class="wf-control wf-control-play" data-wf="play" aria-label="${playIcon === 'pause' ? 'Pause' : 'Play'}" title="${playIcon === 'pause' ? 'Pause' : 'Play'}">${icon(playIcon, 22)}</button>
+          <button type="button" class="wf-control" data-wf="next" aria-label="Next track" title="Next track">${icon('next', 19)}</button>
+          <button type="button" class="wf-control wf-control-close" data-lyr="close" aria-label="Exit full screen" title="Exit full screen">${icon('close', 18)}</button>
+        </div>
+      </footer>
+    </div>`;
+  hydrateIcons(overlay);
+}
+
 function renderShell(track, loading) {
+  destroyWordflow();
+  if (isWordflow()) {
+    renderWordflowShell(track, loading);
+    resetLyricNodes();
+    return;
+  }
   const look = currentStyle();
   const art = track?.artwork || '';
   const preview = isPreview();
@@ -274,15 +365,24 @@ function renderShell(track, loading) {
       <footer class="lyrics-foot">${foot}</footer>
     </div>`;
   hydrateIcons(overlay);
-  activeLine = -1; activeWord = -1; lineNodes = []; wordNodes = [];
-  touchedWords.forEach((n) => n.style.cssText = n.style.cssText); // detached nodes; reset below
-  touchedWords = new Set();
+  resetLyricNodes();
 }
 
 function renderLyrics(track = activeTrack()) {
   if (!track) return renderSearch();
   renderShell(track, false);
   const data = state.lyrics.data;
+  if (isWordflow()) {
+    const host = overlay.querySelector('[data-role="wf-host"]');
+    if (!host || !data?.lines?.length) return;
+    wordflow = new WordFlowVisualizer(host);
+    wordflow.setData(data.lines, idOf(track));
+    const status = overlay.querySelector('[data-role="status"]');
+    if (status) status.textContent = `Lyrics loaded for ${track.title} — ${data.lines.length} lines.`;
+    updateLyrics(isPreview() ? 0 : getPositionMs());
+    syncWordflowLoop();
+    return;
+  }
   const scroll = overlay.querySelector('[data-role="scroll"]');
   if (!scroll || !data?.lines?.length) return;
   const note = data.approximateWords && state.settings.showWordApproxNote
@@ -302,6 +402,7 @@ function renderLyrics(track = activeTrack()) {
 }
 
 function renderSearch(query = searchQuery, results = searchResults, error = searchError, loading = searchLoading) {
+  destroyWordflow();
   const look = currentStyle();
   const resultsHtml = loading
     ? `<div class="lyric-results">${Array.from({ length: 3 }, () => '<div class="lyric-result skeleton-row"></div>').join('')}</div>`
@@ -356,7 +457,14 @@ async function runLyricSearch(query) {
 }
 
 export function updateLyrics(positionMs) {
-  if (!state.lyrics.open || !lineNodes.length) return;
+  if (!state.lyrics.open) return;
+  if (isWordflow()) {
+    const time = isPreview() ? 0 : positionMs;
+    wordflow?.update(time);
+    updateWordflowChrome(time);
+    return;
+  }
+  if (!lineNodes.length) return;
   let line = -1;
   for (let i = 0; i < lineNodes.length; i++) {
     if (positionMs >= Number(lineNodes[i].dataset.start)) line = i; else break;
@@ -395,6 +503,64 @@ export function updateLyrics(positionMs) {
   if (cur) cur.textContent = fmt(positionMs);
   const durEl = overlay.querySelector('[data-role="dur"]');
   if (durEl) durEl.textContent = fmt(dur);
+}
+
+/* --------------------------------------------------- WORDFLOW CINEMATIC ENGINE */
+function updateWordflowChrome(positionMs) {
+  const track = activeTrack();
+  const dur = track?.durationMs || state.player.duration || 0;
+  const ratio = dur ? Math.max(0, Math.min(1, positionMs / dur)) : 0;
+  const fill = overlay.querySelector('[data-role="wf-progress-fill"]');
+  if (fill) fill.style.transform = `scaleX(${ratio.toFixed(4)})`;
+  const cur = overlay.querySelector('[data-role="cur"]');
+  if (cur) cur.textContent = fmt(positionMs);
+  const durEl = overlay.querySelector('[data-role="dur"]');
+  if (durEl) durEl.textContent = fmt(dur);
+}
+
+function setWordflowControls(visible) {
+  const stage = overlay.querySelector('.wf-stage');
+  if (!stage) return;
+  stage.dataset.controls = visible ? '1' : '0';
+  clearTimeout(wordflowControlTimer);
+  if (visible) wordflowControlTimer = setTimeout(() => {
+    if (stage.isConnected) stage.dataset.controls = '0';
+  }, 4200);
+}
+
+function syncWordflowPlayState() {
+  const btn = overlay.querySelector('[data-wf="play"]');
+  if (!btn) return;
+  const playing = !isPreview() && state.player.playing;
+  btn.innerHTML = icon(playing ? 'pause' : 'play', 22);
+  const label = playing ? 'Pause' : 'Play';
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+}
+
+function wordflowTick() {
+  if (!state.lyrics.open || !isWordflow() || !wordflow) { stopWordflowLoop(); return; }
+  updateLyrics(isPreview() ? 0 : getPositionMs());
+  wordflowFrame = requestAnimationFrame(wordflowTick);
+}
+
+function syncWordflowLoop() {
+  if (state.lyrics.open && isWordflow() && wordflow?.size) {
+    if (!wordflowFrame) wordflowFrame = requestAnimationFrame(wordflowTick);
+  } else stopWordflowLoop();
+}
+
+function stopWordflowLoop() {
+  if (wordflowFrame) cancelAnimationFrame(wordflowFrame);
+  wordflowFrame = null;
+}
+
+function destroyWordflow() {
+  stopWordflowLoop();
+  clearTimeout(wordflowControlTimer);
+  wordflowControlTimer = null;
+  wordflow?.destroy();
+  wordflow = null;
 }
 
 /* --------------------------------------------------- MOBILE WORD-SYNC ENGINE */
@@ -502,7 +668,7 @@ export function setLook(lookId) {
 }
 
 export function setEngine(engine) {
-  if (engine !== 'classic' && engine !== 'mobile') return;
+  if (engine !== 'classic' && engine !== 'mobile' && engine !== 'wordflow') return;
   state.settings.lyricEngine = engine;
   state.lyrics.look = currentStyle();
   persistSettings();
@@ -518,8 +684,8 @@ export function setMobileStyle(styleId) {
   rerenderStyle();
 }
 
-function rerenderStyle() {
-  menuOpen = false;
+function rerenderStyle(keepMenu = false) {
+  if (!keepMenu) menuOpen = false;
   const track = activeTrack();
   if (!state.lyrics.open) { emit(); return; }
   if (track && state.lyrics.data) renderLyrics(track);
@@ -529,18 +695,39 @@ function rerenderStyle() {
 }
 
 function onClick(event) {
+  const wfBtn = event.target.closest('[data-wf]');
+  if (isWordflow() && wfBtn) {
+    const control = wfBtn.dataset.wf;
+    if (control === 'seek' && event.detail !== 0) {
+      const rect = wfBtn.getBoundingClientRect();
+      if (rect.width) seek(((event.clientX - rect.left) / rect.width) * (activeTrack()?.durationMs || 0));
+    } else if (control === 'play') {
+      const track = activeTrack();
+      if (isPreview() && track) { previewTrack = null; playTrack(track, [track], 'LyricsPlay'); }
+      else togglePlay();
+    } else if (control === 'prev') prev();
+    else if (control === 'next') next();
+    setWordflowControls(true);
+    return;
+  }
+
   const btn = event.target.closest('[data-lyr]');
-  if (!btn) return;
+  if (!btn) {
+    if (isWordflow() && event.target.closest('.wf-stage') && !event.target.closest('.look-menu')) setWordflowControls(true);
+    return;
+  }
   const action = btn.dataset.lyr;
   if (action === 'close') closeLyrics();
   else if (action === 'menu') {
     menuOpen = !menuOpen;
-    const track = activeTrack();
-    if (track) renderShell(track, !!state.lyrics.loading); else renderSearch();
+    rerenderStyle(true);
   } else if (action === 'engine') setEngine(btn.dataset.engine);
-  else if (action === 'engine-toggle') setEngine(isMobile() ? 'classic' : 'mobile');
+  else if (action === 'engine-toggle') setEngine(nextEngine());
   else if (action === 'mobile-style') setMobileStyle(btn.dataset.style);
-  else if (action === 'retry') loadLyrics(activeTrack());
+  else if (action === 'wf-reveal') {
+    const stage = overlay.querySelector('.wf-stage');
+    setWordflowControls(stage?.dataset.controls !== '1');
+  } else if (action === 'retry') loadLyrics(activeTrack());
   else if (action === 'look') setLook(btn.dataset.look);
   else if (action === 'find') {
     stopMobileLoop();
@@ -573,6 +760,15 @@ function trapFocus(event) {
 export function initLyrics() {
   overlay.addEventListener('click', onClick);
   overlay.addEventListener('keydown', trapFocus);
+  overlay.addEventListener('keydown', (event) => {
+    if (!event.target.matches('[data-wf="seek"]')) return;
+    const step = event.shiftKey ? 15000 : 5000;
+    const position = isPreview() ? 0 : getPositionMs();
+    if (event.key === 'ArrowRight') { seek(position + step); event.preventDefault(); }
+    else if (event.key === 'ArrowLeft') { seek(Math.max(0, position - step)); event.preventDefault(); }
+    else if (event.key === 'Home') { seek(0); event.preventDefault(); }
+    else if (event.key === 'End') { seek(activeTrack()?.durationMs || 0); event.preventDefault(); }
+  });
   overlay.addEventListener('submit', (event) => {
     if (!event.target.matches('[data-lyr="search"]')) return;
     event.preventDefault();
@@ -586,6 +782,7 @@ export function initLyrics() {
     }
   });
   document.addEventListener('aura:time', (event) => updateLyrics(event.detail.position));
+  document.addEventListener('aura:playstate', syncWordflowPlayState);
   document.addEventListener('aura:trackchange', () => {
     previewTrack = null;
     activeLine = -1; activeWord = -1;
