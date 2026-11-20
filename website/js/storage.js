@@ -1,4 +1,7 @@
-/* Local-first persistence. No private data is sent to any server. */
+/* Local-first persistence. Library and preferences stay in this browser.
+ * The optional Last.fm session key is sent only to AURA's own backend, which
+ * signs scrobbles with the shared secret so the secret never reaches the web app.
+ */
 const PREFIX = 'aura2:v1:';
 
 export const DEFAULT_SETTINGS = {
@@ -12,6 +15,13 @@ export const DEFAULT_SETTINGS = {
   volume: 0.8,
   sortLibrary: 'recent',
   dataSaver: false,
+  lastfmSessionKey: '',
+  lastfmUsername: '',
+  scrobbleEnabled: false,
+  nowPlayingEnabled: true,
+  loveEnabled: false,
+  scrobblePercent: 0.5,
+  scrobbleMinSeconds: 30,
 };
 
 export const DEFAULT_LIBRARY = {

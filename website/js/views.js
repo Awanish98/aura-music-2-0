@@ -4,6 +4,7 @@ import { endpoints } from './api.js';
 import { icon, hydrateIcons } from './icons.js';
 import { LOOKS, VIEW_MODES, MOBILE_STYLES, setLook, setEngine, setMobileStyle } from './lyrics.js';
 import { playQueue, playTrack, addToQueue, removeFromQueue, currentTrack, togglePlay, openFullPlayer } from './player.js';
+import { beginLastfmConnect, completeLastfmConnect, disconnectLastfm, hasPendingConnection } from './lastfm.js';
 
 let searchTimer = null;
 let activeNav = '';
@@ -451,12 +452,46 @@ export async function loadApk() {
 /* -------------------------------------------------------------- settings */
 function renderSettings(root) {
   const s = state.settings;
+  const cfg = state.config || {};
+  const fmReady = Boolean(cfg.lastfmConfigured);
+  const fmConnected = Boolean(s.lastfmSessionKey);
+  const fmPending = hasPendingConnection();
   const lookTiles = LOOK_OPTIONS.map((l) => `
     <button type="button" class="look-tile ${s.lyricLook === l.look ? 'active' : ''}" data-action="set-look" data-value="${esc(l.look)}" title="${esc(l.signature || '')}">
       <i style="background:linear-gradient(135deg,${l.primary},${l.accent})"></i>${esc(l.name)}</button>`).join('');
   const mobileTiles = MOBILE_OPTIONS.map((l) => `
     <button type="button" class="look-tile ${s.mobileStyle === l.look ? 'active' : ''}" data-action="set-mobile-style" data-value="${esc(l.look)}" title="${esc(l.signature || '')}">
       <i style="background:linear-gradient(135deg,${l.primary},${l.accent})"></i>${esc(l.name)}</button>`).join('');
+
+  let fmPanel = '<div class="panel"><h3>Last.fm scrobbling</h3><p style="font-size:12px">Last.fm is not enabled on this backend yet. Scrobbling stays off until the backend is configured.</p></div>';
+  if (fmReady) {
+    const fmStatus = fmConnected
+      ? `Connected as <strong>${esc(s.lastfmUsername || 'your Last.fm account')}</strong>. Your session key stays in this browser; the shared secret never leaves the backend.`
+      : 'Connect your Last.fm account to scrobble tracks and show your now-playing status.';
+    const fmAction = fmConnected
+      ? '<button type="button" class="btn sm" data-action="lastfm-disconnect">Disconnect Last.fm</button>'
+      : fmPending
+        ? '<button type="button" class="btn sm primary" data-action="lastfm-finish">I approved — finish connecting</button>'
+        : '<button type="button" class="btn sm primary" data-action="lastfm-connect">Connect to Last.fm</button>';
+    const fmControls = fmConnected ? `
+      <div class="setting-row"><div>Scrobble tracks<small>Submit a listen after the minimum time below. Network failures never interrupt playback.</small></div>
+        <label class="switch"><input type="checkbox" data-setting="scrobbleEnabled" ${s.scrobbleEnabled ? 'checked' : ''}><span></span></label></div>
+      <div class="setting-row"><div>Update now playing<small>Show the current track on your Last.fm profile.</small></div>
+        <label class="switch"><input type="checkbox" data-setting="nowPlayingEnabled" ${s.nowPlayingEnabled ? 'checked' : ''}><span></span></label></div>
+      <div class="setting-row"><div>Love on favorite<small>Heart a track here to love it on Last.fm.</small></div>
+        <label class="switch"><input type="checkbox" data-setting="loveEnabled" ${s.loveEnabled ? 'checked' : ''}><span></span></label></div>
+      <div class="setting-row"><div>Minimum listen time</div>
+        <select data-setting="scrobbleMinSeconds">${[30, 60, 120].map((v) => `<option value="${v}" ${Number(s.scrobbleMinSeconds) === v ? 'selected' : ''}>${v} seconds</option>`).join('')}</select></div>
+      <div class="setting-row"><div>Scrobble after</div>
+        <select data-setting="scrobblePercent">${[0.3, 0.5, 0.8].map((v) => `<option value="${v}" ${Number(s.scrobblePercent) === v ? 'selected' : ''}>${Math.round(v * 100)}% of track</option>`).join('')}</select></div>`
+      : '';
+    fmPanel = `<div class="panel"><h3>Last.fm scrobbling</h3>
+      <p style="font-size:12px">${fmStatus}</p>
+      <div class="hero-actions">${fmAction}</div>
+      ${fmControls}
+    </div>`;
+  }
+
   root.innerHTML = `<div class="section-head"><div><div class="eyebrow">PREFERENCES · STORED LOCALLY</div><h1>Settings</h1></div></div>
     <div class="settings-grid">
       <div class="panel"><h3>LyricsPlay</h3>
@@ -487,6 +522,7 @@ function renderSettings(root) {
         <table class="apk-table"><tbody>${Object.entries(state.config?.capabilities || {}).map(([k, v]) =>
           `<tr><td>${esc(k.replace(/([A-Z])/g, ' $1'))}</td><td style="color:${v ? 'var(--green)' : 'var(--faint)'}">${v ? 'available' : 'local only'}</td></tr>`).join('')}</tbody></table>
         <p style="font-size:11px;margin-top:12px">Groq visual analysis: ${state.config?.groqConfigured ? 'configured' : 'not configured (local heuristics)'}.</p>
+        <p style="font-size:11px">Last.fm scrobbling: ${fmReady ? 'available' : 'not configured on this backend'}.</p>
       </div>
       <div class="panel"><h3>Keyboard shortcuts</h3>
         <table class="apk-table"><tbody>${[
@@ -499,8 +535,9 @@ function renderSettings(root) {
         <div class="hero-actions"><button type="button" class="btn sm" data-action="export-data">Export library</button>
           <button type="button" class="btn sm" data-action="clear-data">Clear local data</button></div>
       </div>
+      ${fmPanel}
       <div class="panel"><h3>Genuine limitations</h3>
-        <p style="font-size:12px">Web uses YouTube search instead of the app's InnerTube visitor/po-token flow; no login or private credentials are used. Playlist sync, Discord, scrobbling, Cast, Android Auto, widgets, mic recognition and native DSP are Android-only. Streamed audio is never cached offline.</p>
+        <p style="font-size:12px">Web uses YouTube search instead of the app's InnerTube visitor/po-token flow; no login or private credentials are used. Optional Last.fm scrobbling is available in Settings when the backend is configured. Playlist sync, Discord, Cast, Android Auto, widgets, mic recognition and native DSP remain Android-only. Streamed audio is never cached offline.</p>
         <a class="btn sm" href="./privacy.html" target="_blank" rel="noopener">Privacy policy</a>
       </div>
     </div>`;
@@ -648,7 +685,7 @@ function allTracksInView() {
   ];
 }
 
-function onClick(event) {
+async function onClick(event) {
   const el = event.target.closest('[data-action]');
   const card = event.target.closest('[data-track]');
   if (card && !el) {
@@ -694,7 +731,11 @@ function onClick(event) {
     toast('Mix saved as a playlist');
   } else if (action === 'fav') {
     const t = findTrack(value) || allTracksInView().find((x) => (x.id || x.videoId) === value);
-    if (t) { toggleFavorite(t); render(document.getElementById('view'), location.hash.slice(1)); }
+    if (t) {
+      const loved = toggleFavorite(t);
+      document.dispatchEvent(new CustomEvent('aura:favorite', { detail: { track: t, loved } }));
+      render(document.getElementById('view'), location.hash.slice(1));
+    }
   } else if (action === 'nextplay' || action === 'queue') {
     const t = findTrack(value) || allTracksInView().find((x) => (x.id || x.videoId) === value);
     if (t) addToQueue(t, action === 'nextplay');
@@ -733,7 +774,31 @@ function onClick(event) {
     const frame = el.parentElement;
     frame.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(value)}?autoplay=1&rel=0" title="Music video" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen style="width:100%;height:100%;border:0"></iframe>`;
   } else if (action === 'reload-apk') loadApk();
-  else if (action === 'export-data') {
+  else if (action === 'lastfm-connect') {
+    // Open synchronously so the click gesture survives the async token fetch.
+    const popup = window.open('about:blank', '_blank', 'width=920,height=720');
+    if (popup) { try { popup.opener = null; } catch { /* best effort */ } }
+    try {
+      await beginLastfmConnect(popup);
+      toast('Approve AURA in the Last.fm tab, then return here and finish connecting.');
+    } catch (e) {
+      if (popup) { try { popup.close(); } catch { /* best effort */ } }
+      toast(e.message || 'Could not start the Last.fm connection.', true);
+    }
+    render(document.getElementById('view'), '/settings');
+  } else if (action === 'lastfm-finish') {
+    try {
+      const data = await completeLastfmConnect();
+      toast(`Last.fm connected${data.username ? ` as ${data.username}` : ''}.`);
+    } catch (e) {
+      toast(e.message || 'Last.fm has not approved this connection yet.', true);
+    }
+    render(document.getElementById('view'), '/settings');
+  } else if (action === 'lastfm-disconnect') {
+    disconnectLastfm();
+    toast('Last.fm disconnected. Your local library is untouched.');
+    render(document.getElementById('view'), '/settings');
+  } else if (action === 'export-data') {
     const blob = new Blob([JSON.stringify({ library: state.library, settings: state.settings }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'aura-music-library.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);

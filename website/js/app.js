@@ -6,6 +6,7 @@ import { initViews, render, runSearch, loadDiscover, loadApk } from './views.js'
 import { initPlayer, closeFullPlayer } from './player.js';
 import { initLyrics, closeLyrics, LOOKS, setLook } from './lyrics.js';
 import { initRouter } from './router.js';
+import { initLastfm } from './lastfm.js';
 
 function setBackendStatus(online) {
   const pill = document.getElementById('backendPill');
@@ -28,6 +29,7 @@ async function bootstrap() {
   initPlayer();
   initLyrics();
   initRouter();
+  initLastfm();
 
   const topForm = document.getElementById('topSearch');
   topForm?.addEventListener('submit', (event) => {

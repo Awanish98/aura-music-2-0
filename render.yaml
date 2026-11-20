@@ -23,3 +23,9 @@ services:
       # sync:false keeps the value out of the repository and out of git history.
       - key: GROQ_API_KEY
         sync: false
+      # Last.fm shared secret is server-side only. The browser never sees it;
+      # it holds only the user's own session key in localStorage.
+      - key: LASTFM_API_KEY
+        sync: false
+      - key: LASTFM_SECRET
+        sync: false

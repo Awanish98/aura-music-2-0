@@ -29,7 +29,7 @@ with `?api=https://your-backend/api`, which is stored in `localStorage` under
 
 ## Preflight (all local checks green)
 
-- [x] `python backend/test_server.py` — 12 tests, OK (new: AI suggest validation, real-track fallback and cache).
+- [x] `python backend/test_server.py` — 15 tests, OK (AI suggest validation/fallback/cache, Last.fm signature + route validation).
 - [x] `python backend/test_music.py` — 13 tests, OK (new: unknown-uploader artist derivation for lyrics).
 - [x] `python -m py_compile backend/music.py backend/server.py` — OK.
 - [x] `node --check` on `website/config.js`, `website/sw.js` and all `website/js/*.js` — OK.
@@ -136,5 +136,29 @@ browser.
   12 chips and search fit; home promo chips navigate to `#/mood` and build a mix;
   `ai-cinematic` opened LyricsPlay with `data-engine="classic"` and
   `look="cinema"`, started real playback, and produced no console errors.
-- **Pending user step:** add the `GROQ_API_KEY` value in the Render dashboard.
-  Until then the live endpoint returns `source:"local"` (still real tracks).
+- Resolved: `GROQ_API_KEY` is set in the Render dashboard (as an Environment
+  Variable, not a Secret File). Live `/api/health` reports
+  `groq_configured:true`, `model:"qwen/qwen3.8-27b"` and frontend payloads
+  return `source:"groq"`, `degraded:false`.
+
+## Last.fm scrobbling (2026-11-20)
+
+- Optional scrobbling, now-playing and track.love. The browser never holds the
+  shared secret: it calls signed backend proxies (`auth.getToken`,
+  `auth.getSession`, `track.updateNowPlaying`, `track.scrobble`,
+  `track.love`/`track.unlove`) with the user's own session key only.
+- `LASTFM_API_KEY` and `LASTFM_SECRET` are `sync:false` env vars in
+  `render.yaml`; values are filled only in the Render dashboard. All Last.fm
+  routes are IP-rate-limited and return `503 lastfm_unavailable` when unset.
+- Connect flow: Settings → **Connect to Last.fm** (opens the approval popup) →
+  approve in Last.fm → **I approved — finish connecting**. The session key is
+  stored in `localStorage` under `aura2:v1:settings`; **Disconnect** clears it.
+- Scrobbling thresholds follow the Android defaults: min 30 s and 50 % of the
+  track, capped at 240 s. Configurable in Settings. All calls are best-effort
+  and can never interrupt playback.
+- New `website/js/lastfm.js` is in the service-worker shell; cache bumped to
+  `aura-web-2.0.5`. Backend test suite now has 15 tests including a fixed
+  signature vector (`0e922fa4d29391f6e1c456a9ba2d7543`).
+- **Pending user step:** approve AURA in the Last.fm popup, then finish connect
+  in Settings. Verify `/api/config` shows `lastfmConfigured:true` and
+  `capabilities.lastfm:true` after the Render redeploy.

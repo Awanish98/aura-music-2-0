@@ -54,6 +54,7 @@ except ImportError:  # pragma: no cover - support import as backend.server
 LOGGER = logging.getLogger("aura.backend")
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+LASTFM_URL = "https://ws.audioscrobbler.com/2.0/"
 DEFAULT_MODEL = "qwen/qwen3.8-27b"
 
 # Exact names from the app's CinematicMood / CinematicTheme enums.
@@ -119,6 +120,8 @@ class ApiError(Exception):
 @dataclass(frozen=True)
 class Config:
     groq_api_key: str | None = None
+    lastfm_api_key: str | None = None
+    lastfm_secret: str | None = None
     client_token: str | None = None
     model: str = DEFAULT_MODEL
     port: int = 8787
@@ -128,6 +131,7 @@ class Config:
 
     # Fixed operational limits (overridable by tests, not by env).
     groq_timeout: float = 15.0
+    lastfm_timeout: float = 12.0
     rate_limit: int = 20
     rate_window: float = 60.0
     cache_ttl: float = 6 * 60 * 60
@@ -152,6 +156,8 @@ class Config:
 
         return cls(
             groq_api_key=os.environ.get("GROQ_API_KEY", "").strip() or None,
+            lastfm_api_key=os.environ.get("LASTFM_API_KEY", "").strip() or None,
+            lastfm_secret=os.environ.get("LASTFM_SECRET", "").strip() or None,
             client_token=os.environ.get("AURA_CLIENT_TOKEN", "").strip() or None,
             model=(os.environ.get("AURA_GROQ_MODEL", "").strip() or DEFAULT_MODEL),
             port=integer("AURA_PORT", 8787),
@@ -360,6 +366,11 @@ class AuraApp:
                 raise ApiError(405, "Method not allowed", "method_not_allowed")
             return self._analyze(headers, body, ip)
 
+        if path.startswith("/api/lastfm/"):
+            if method != "POST":
+                raise ApiError(405, "Method not allowed", "method_not_allowed")
+            return self._lastfm(path, body, ip)
+
         if method == "GET" and not path.startswith("/api/"):
             return self._web_static(path)
 
@@ -452,10 +463,12 @@ class AuraApp:
                 "video": True,
                 "apkDownload": True,
                 "aiSuggest": True,
+                "lastfm": bool(self.config.lastfm_api_key and self.config.lastfm_secret),
                 "cloudSync": False,
                 "authentication": False,
             },
             "groqConfigured": bool(self.config.groq_api_key),
+            "lastfmConfigured": bool(self.config.lastfm_api_key and self.config.lastfm_secret),
             "serverTime": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -792,6 +805,117 @@ class AuraApp:
             ),
         }
         return HttpResponse(200, raw, content_type, headers)
+
+    # ------------------------------------------------------------- last.fm api
+
+    def _lastfm_require(self) -> None:
+        if not (self.config.lastfm_api_key and self.config.lastfm_secret):
+            raise ApiError(503, "Last.fm is not configured on this backend.", "lastfm_unavailable")
+
+    def _lastfm_sign(self, params: dict[str, str]) -> str:
+        """MD5 of alphabetically sorted name+value pairs plus the shared secret."""
+        ordered = "".join(f"{key}{params[key]}" for key in sorted(params))
+        return hashlib.md5((ordered + (self.config.lastfm_secret or "")).encode("utf-8")).hexdigest()
+
+    def _lastfm_call(self, method: str, params: dict[str, str]) -> dict[str, Any]:
+        self._lastfm_require()
+        signed: dict[str, str] = {
+            **params,
+            "method": method,
+            "api_key": self.config.lastfm_api_key or "",
+            "format": "json",
+        }
+        signed["api_sig"] = self._lastfm_sign(signed)
+        data = urlparse.urlencode(signed).encode("utf-8")
+        request = urlrequest.Request(
+            LASTFM_URL,
+            data=data,
+            method="POST",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": "AURA-Music-2.0/2.0",
+            },
+        )
+        try:
+            with urlrequest.urlopen(request, timeout=self.config.lastfm_timeout) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urlerror.URLError, TimeoutError, ValueError) as exc:
+            LOGGER.warning("Last.fm request failed (%s)", type(exc).__name__)
+            raise ApiError(502, "Last.fm could not be reached. Try again shortly.", "lastfm_network") from None
+        if not isinstance(payload, dict):
+            raise ApiError(502, "Last.fm returned an unexpected response.", "lastfm_protocol")
+        if payload.get("error"):
+            message = _safe_text(payload.get("message"), 180) or "Last.fm rejected the request."
+            raise ApiError(502, message, "lastfm_error")
+        return payload
+
+    def _lastfm(self, path: str, body: bytes, ip: str) -> HttpResponse:
+        """Proxy Last.fm auth/scrobble calls so the shared secret stays server-side.
+
+        The browser sends only the user's own session key, which is stored in
+        that browser. No request body, token or session key is ever logged.
+        """
+        if not self.rate_allowed(f"lastfm:{ip}", limit=self.config.rate_limit, window=self.config.rate_window):
+            raise ApiError(429, "Last.fm requests are rate limited. Try again shortly.", "rate_limited")
+        self._lastfm_require()
+        action = path.rsplit("/", 1)[-1]
+        payload = self._json_body(body)
+
+        if action == "token":
+            data = self._lastfm_call("auth.getToken", {})
+            token = _safe_text(data.get("token"), 128)
+            if not token:
+                raise ApiError(502, "Last.fm did not return an auth token.", "lastfm_protocol")
+            auth_url = f"https://www.last.fm/api/auth?api_key={urlparse.quote(self.config.lastfm_api_key or '')}&token={urlparse.quote(token)}"
+            return HttpResponse.json(200, {"token": token, "authUrl": auth_url})
+
+        if action == "session":
+            token = _safe_text(payload.get("token"), 128)
+            if not token:
+                raise ApiError(400, "The Last.fm auth token is missing.", "invalid_token")
+            data = self._lastfm_call("auth.getSession", {"token": token})
+            session = data.get("session") if isinstance(data.get("session"), dict) else {}
+            key = _safe_text(session.get("key"), 128)
+            if not key:
+                raise ApiError(502, "Last.fm did not approve this connection yet.", "lastfm_not_approved")
+            return HttpResponse.json(200, {
+                "sessionKey": key,
+                "username": _safe_text(session.get("name"), 128),
+                "subscriber": bool(session.get("subscriber")),
+            })
+
+        if action in ("nowplaying", "scrobble", "love", "unlove"):
+            session_key = _safe_text(payload.get("sessionKey"), 128)
+            artist = _safe_text(payload.get("artist"), 200)
+            track = _safe_text(payload.get("track"), 200)
+            if not session_key:
+                raise ApiError(400, "Connect Last.fm before scrobbling.", "lastfm_not_connected")
+            if not artist or not track:
+                raise ApiError(400, "A track needs both an artist and a title.", "invalid_track")
+            params: dict[str, str] = {"sk": session_key, "artist": artist, "track": track}
+            album = _safe_text(payload.get("album"), 200)
+            if album:
+                params["album"] = album
+            if action in ("nowplaying", "scrobble"):
+                duration = payload.get("duration")
+                if isinstance(duration, (int, float)) and 1 <= duration <= 86400:
+                    params["duration"] = str(int(duration))
+            if action == "scrobble":
+                timestamp = payload.get("timestamp")
+                now = int(time.time())
+                if not isinstance(timestamp, (int, float)) or not (now - 86400 <= timestamp <= now + 300):
+                    timestamp = now
+                params["timestamp"] = str(int(timestamp))
+            method = {
+                "nowplaying": "track.updateNowPlaying",
+                "scrobble": "track.scrobble",
+                "love": "track.love",
+                "unlove": "track.unlove",
+            }[action]
+            self._lastfm_call(method, params)
+            return HttpResponse.json(200, {"ok": True})
+
+        raise ApiError(404, "Unknown Last.fm action.", "not_found")
 
     # --------------------------------------------------------------- ai radio
 

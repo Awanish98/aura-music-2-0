@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import unittest
 from dataclasses import replace
 from unittest.mock import patch
@@ -305,6 +306,61 @@ class BackendTests(unittest.TestCase):
             self.assertEqual(status2, 200)
             self.assertEqual(headers2.get("X-AURA-Cache"), "hit")
             self.assertEqual(body2["tracks"], body["tracks"])
+
+    # ----------------------------------------------------------------- last.fm
+    def test_lastfm_disabled_by_default(self):
+        status, body, _ = self.call("GET", "/api/config")
+        self.assertEqual(status, 200)
+        self.assertFalse(body["lastfmConfigured"])
+        self.assertFalse(body["capabilities"]["lastfm"])
+
+        status, body, _ = self.call("POST", "/api/lastfm/token", {})
+        self.assertEqual(status, 503)
+        self.assertEqual(body["code"], "lastfm_unavailable")
+
+    def test_lastfm_signature_matches_spec(self):
+        cfg = replace(self.config, lastfm_api_key="k", lastfm_secret="secret")
+        app = server.AuraApp(cfg)
+        params = {
+            "api_key": "k", "artist": "Artist", "format": "json",
+            "method": "track.love", "sk": "session", "track": "Title",
+        }
+        self.assertEqual(app._lastfm_sign(params), "0e922fa4d29391f6e1c456a9ba2d7543")
+
+    def test_lastfm_auth_and_scrobble_validation(self):
+        cfg = replace(self.config, lastfm_api_key="key123", lastfm_secret="secret123")
+        app = server.AuraApp(cfg)
+        body = json.dumps({}).encode("utf-8")
+
+        with patch.object(app, "_lastfm_call", return_value={"token": "abc123"}) as mocked:
+            res = app._lastfm("/api/lastfm/token", body, "127.0.0.1")
+            payload = json.loads(res.body)
+            self.assertEqual(payload["token"], "abc123")
+            self.assertIn("token=abc123", payload["authUrl"])
+            mocked.assert_called_once_with("auth.getToken", {})
+
+        with patch.object(app, "_lastfm_call", return_value={"ok": True}) as mocked:
+            with self.assertRaises(server.ApiError) as missing:
+                app._lastfm(
+                    "/api/lastfm/scrobble",
+                    json.dumps({"artist": "A", "track": "T"}).encode("utf-8"),
+                    "127.0.0.1",
+                )
+            self.assertEqual(missing.exception.code, "lastfm_not_connected")
+
+            scrobble = {
+                "sessionKey": "user-session", "artist": "A", "track": "T",
+                "album": "Album", "duration": 200, "timestamp": int(time.time()),
+            }
+            res = app._lastfm(
+                "/api/lastfm/scrobble", json.dumps(scrobble).encode("utf-8"), "127.0.0.1"
+            )
+            self.assertTrue(json.loads(res.body)["ok"])
+            method, params = mocked.call_args.args
+            self.assertEqual(method, "track.scrobble")
+            self.assertEqual(params["artist"], "A")
+            self.assertEqual(params["album"], "Album")
+            self.assertNotIn("api_sig", params)  # added by _lastfm_call, never trusted from client
 
 
 if __name__ == "__main__":
