@@ -13,7 +13,8 @@ export const state = {
   search: { query: '', results: null, loading: false, error: null, filter: 'all', sort: 'relevance' },
   detail: null,
   library: load('library', DEFAULT_LIBRARY),
-  settings: load('settings', DEFAULT_SETTINGS),
+  // Merge so browsers with pre-Last.fm settings still get the new defaults.
+  settings: { ...DEFAULT_SETTINGS, ...load('settings', DEFAULT_SETTINGS) },
   player: {
     queue: [],
     index: -1,

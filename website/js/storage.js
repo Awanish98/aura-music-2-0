@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS = {
   dataSaver: false,
   lastfmSessionKey: '',
   lastfmUsername: '',
-  scrobbleEnabled: false,
+  scrobbleEnabled: true,
   nowPlayingEnabled: true,
   loveEnabled: false,
   scrobblePercent: 0.5,

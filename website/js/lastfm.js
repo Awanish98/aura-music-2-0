@@ -109,6 +109,9 @@ export async function completeLastfmConnect() {
   const data = await endpoints.lastfmSession(pendingToken);
   state.settings.lastfmSessionKey = data.sessionKey;
   state.settings.lastfmUsername = data.username;
+  // A fresh connection should scrobble immediately (disconnect resets these).
+  state.settings.scrobbleEnabled = true;
+  state.settings.nowPlayingEnabled = true;
   persistSettings();
   emit();
   pendingToken = '';
