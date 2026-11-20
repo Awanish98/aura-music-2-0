@@ -2,7 +2,7 @@
 import { state, toast, persistSettings } from './state.js';
 import { API_BASE, endpoints } from './api.js';
 import { hydrateIcons, icon } from './icons.js';
-import { initViews, runSearch, loadDiscover, loadApk } from './views.js';
+import { initViews, render, runSearch, loadDiscover, loadApk } from './views.js';
 import { initPlayer, closeFullPlayer } from './player.js';
 import { initLyrics, closeLyrics, LOOKS, setLook } from './lyrics.js';
 import { initRouter } from './router.js';
@@ -53,6 +53,8 @@ async function bootstrap() {
     state.config = { capabilities: {}, groqConfigured: false };
     setBackendStatus(false);
   }
+  // Mood Radio renders its curator note from config; refresh it once config is known.
+  if (state.route === '/mood') render(document.getElementById('view'), '/mood');
   loadApk();
   loadDiscover();
 

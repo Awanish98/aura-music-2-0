@@ -514,7 +514,7 @@ function moodPill(mood) {
 function renderMood(root) {
   const ai = state.ai;
   const caps = state.config?.capabilities || {};
-  const sourceNote = !caps.aiSuggest ? 'AI CURATOR VIA AURA BACKEND'
+  const sourceNote = !caps.aiSuggest ? 'SMART CURATION · UPDATE BACKEND FOR AI'
     : state.config?.groqConfigured ? 'POWERED BY GROQ AI'
       : 'SMART CURATION · ADD GROQ_API_KEY FOR AI CURATION';
   const mix = ai.mix;
