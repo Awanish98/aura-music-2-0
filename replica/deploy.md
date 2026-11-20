@@ -48,8 +48,14 @@ with `?api=https://your-backend/api`, which is stored in `localStorage` under
 | AAB SHA-256 | `6C9F33EF5B55B53B4C4A8B136601357D1CF45F8AFF9FC1451AE78F55C07305D3` (186,386,586 bytes) |
 | 16 KB pages | zipalign `-c -P 16 -v 4` exit 0; ELF `BAD_COUNT 0`; AAB `PAGE_ALIGNMENT_16K` |
 
-APK/AAB are gitignored. They must be attached to the `v1.4.6` GitHub Release so
-the download page works from GitHub Pages.
+APK/AAB are gitignored. They are attached to the published `v1.4.6` GitHub
+Release so the download page works from GitHub Pages. GitHub's 100 MB asset
+limit was worked around by uploading 8 MB chunks to the draft release
+(`scripts/upload_release_chunks.py`, resumable + duplicate-safe) and joining
+them with the `Assemble signed release assets` Action
+(`.github/workflows/assemble-release-assets.yml` +
+`scripts/assemble_release_assets.py`) when the release was published. The
+Action verifies both SHA-256 hashes before uploading the final assets.
 
 ## Deployment steps
 
@@ -77,6 +83,20 @@ the download page works from GitHub Pages.
 6. Add screenshots and a 512×512 feature graphic (`favicon-512.png` is ours).
 7. Internal testing first, then Production rollout. Keep `Echo-Music/keystore.jks` safe.
 
-**Status:** all code, configs and local verification are complete. Publishing the
-Render service, enabling Pages and the Play Console rollout require the user’s
-GitHub/Render/Google accounts. No credentials were entered or stored by the agent.
+## Verified live state (2026-11-20)
+
+| Surface | Check | Result |
+|---|---|---|
+| Pages | `https://awanish98.github.io/aura-music-2-0/` | live, mobile word-sync engine + 18 classic looks present |
+| Backend | `GET /api/health` on `aura-music-2-0-api.onrender.com` | HTTP 200 |
+| Config | `GET /api/config` | catalog/streaming/lyrics/APK capabilities available |
+| Search | `GET /api/catalog/search?q=Never Gonna Give You Up` | real YouTube results |
+| Lyrics | `GET /api/lyrics?...` | LRCLIB result with `hasWordSync: true` |
+| Audio | `GET /api/stream/audio?id=dQw4w9WgXcQ` with Range | HTTP 206, `audio/mp4` |
+| Browser QA | live Pages + live backend | `BACKEND ONLINE`, playback advanced to 4.5 s, 58 lines / 370 words, mobile active-word CSS vars updating, classic toggle returns `data-engine="classic"`, `look="aurora"`, no console errors |
+| Downloads | live `#/download` page | signed 1.4.6 (167) identity, correct SHA-256, release URLs return 206 |
+
+**Status:** frontend, backend and signed downloads are live and verified. The
+Play Console rollout remains a user step (Google account). No credentials were
+entered or stored by the agent; Render login was completed by the user in the
+browser.
