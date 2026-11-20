@@ -19,8 +19,10 @@
   if (stored && !override) {
     try {
       var storedUrl = new URL(stored, location.href);
-      var storedIsLocal = ['127.0.0.1', 'localhost'].indexOf(storedUrl.hostname) !== -1;
-      if (!isLocal || !storedIsLocal) usableStored = stored;
+      var storedIsLocal = ['127.0.0.1', 'localhost', '[::1]'].indexOf(storedUrl.hostname) !== -1;
+      // On a deployed origin a stored localhost value is stale development state.
+      // On a local origin it is a valid developer override.
+      if (isLocal || !storedIsLocal) usableStored = stored;
     } catch (_) { usableStored = null; }
   }
   if (override) {
