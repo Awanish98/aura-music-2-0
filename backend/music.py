@@ -230,7 +230,7 @@ def _public_proxy_candidates() -> list[str]:
     except Exception:
         with _lock:
             return list(_proxy_cache[1]) if _proxy_cache else []
-    candidates = ["http://" + line.strip() for line in lines if re.fullmatch(r"\d+\.\d+\.\d+\.\d+:\d+", line.strip())][:40]
+    candidates = ["http://" + line.strip() for line in lines if re.fullmatch(r"\d+\.\d+\.\d+\.\d+:\d+", line.strip())][:24]
     with _lock:
         _proxy_cache = (now + PROXY_LIST_TTL, candidates)
     return candidates
@@ -239,7 +239,7 @@ def _public_proxy_candidates() -> list[str]:
 def _proxy_alive(proxy: str, video_id: str) -> bool:
     try:
         opener = urlrequest.build_opener(urlrequest.ProxyHandler({"http": proxy, "https": proxy}))
-        with opener.open(f"https://www.youtube.com/embed/{video_id}", timeout=8) as response:
+        with opener.open(f"https://www.youtube.com/embed/{video_id}", timeout=6) as response:
             return response.status == 200
     except Exception:  # noqa: BLE001 - public proxy health check
         return False
@@ -283,8 +283,8 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
 
     chosen: dict[str, Any] | None = None
     working: list[str] = []
-    futures = []
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    pool = ThreadPoolExecutor(max_workers=6)
+    try:
         futures = [pool.submit(attempt, proxy) for proxy in alive]
         done, _ = wait(futures, timeout=45)
         for future in done:
@@ -296,9 +296,9 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
                         chosen = info
             except Exception:  # noqa: BLE001 - ignore a failed public proxy
                 continue
-    for future in futures:
-        if not future.done():
-            future.cancel()
+    finally:
+        # Do not block the request on a slow/dead proxy; cancel what is left.
+        pool.shutdown(wait=False, cancel_futures=True)
     if chosen is not None:
         with _lock:
             _working_proxies = (time.monotonic() + PROXY_CACHE_TTL, working[:6])
