@@ -191,11 +191,44 @@ def _with_player_client(extra: dict[str, Any] | None, client: str) -> dict[str, 
     return options
 
 
+def diagnose_pages(video_id: str) -> dict[str, Any]:
+    """TEMPORARY diagnostic: inspect YouTube pages for embedded player data."""
+    pages = {
+        "watch": f"https://www.youtube.com/watch?v={video_id}",
+        "embed": f"https://www.youtube.com/embed/{video_id}",
+        "nocookie": f"https://www.youtube-nocookie.com/embed/{video_id}",
+        "mobile": f"https://m.youtube.com/watch?v={video_id}",
+        "music": f"https://music.youtube.com/watch?v={video_id}",
+        "legacy": f"https://www.youtube.com/get_video_info?video_id={video_id}&el=embedded",
+    }
+    results: dict[str, Any] = {}
+    for name, url in pages.items():
+        try:
+            request = urlrequest.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"})
+            with urlrequest.urlopen(request, timeout=20) as response:
+                body = response.read(2_000_000).decode("utf-8", "ignore")
+                status = response.status
+        except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
+            detail = re.sub(r"https?://\S+", "[url]", f"{type(exc).__name__}: {exc}")
+            results[name] = {"ok": False, "error": detail[:140]}
+            continue
+        results[name] = {
+            "ok": True,
+            "status": status,
+            "bytes": len(body),
+            "streamingData": "streamingData" in body,
+            "adaptiveFormats": "adaptiveFormats" in body,
+            "loginRequired": "LOGIN_REQUIRED" in body or "Sign in to confirm" in body,
+            "botCheck": "not a bot" in body,
+        }
+    return results
+
+
 def diagnose_clients(video_id: str) -> dict[str, Any]:
     """TEMPORARY diagnostic: report which yt-dlp player clients resolve a public video."""
     clients = (
         "tv", "tv_embedded", "android_vr", "android", "ios",
-        "web_embedded", "web_safari", "web_creator", "mweb", "web",
+        "web_embedded", "web_safari", "web_creator", "mweb", "web", "web_music",
     )
     url = f"https://www.youtube.com/watch?v={video_id}"
     results: dict[str, Any] = {}
