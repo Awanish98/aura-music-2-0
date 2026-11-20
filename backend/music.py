@@ -179,17 +179,42 @@ def _ydl_options(extra: dict[str, Any] | None = None) -> dict[str, Any]:
     return options
 
 
+def _with_player_client(extra: dict[str, Any] | None, client: str) -> dict[str, Any]:
+    """Copy options and force one YouTube player client without mutating callers."""
+    options = dict(extra or {})
+    extractor_args = dict(options.get("extractor_args") or {})
+    youtube_args = dict(extractor_args.get("youtube") or {})
+    youtube_args["player_client"] = [client]
+    extractor_args["youtube"] = youtube_args
+    options["extractor_args"] = extractor_args
+    return options
+
+
 def _extract(query: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
-    try:
-        with yt_dlp.YoutubeDL(_ydl_options(extra)) as ydl:
-            info = ydl.extract_info(query, download=False)
-    except MusicError:
-        raise
-    except Exception as exc:  # network, extraction, rate limit, region, ...
-        raise MusicError(502, "The music provider is temporarily unavailable. Try again.", "provider_unavailable") from exc
-    if not isinstance(info, dict):
-        raise MusicError(502, "The provider returned an unexpected response.", "bad_provider_data")
-    return info
+    # Search normally works from every host, but the player API used for stream
+    # resolution is IP-sensitive. Try the default first, then clients that are
+    # known to resolve public videos without a login or po-token.
+    attempts: list[dict[str, Any] | None] = [extra]
+    for client in ("tv_embedded", "android_vr", "web_embedded", "mweb"):
+        attempts.append(_with_player_client(extra, client))
+
+    last_error: Exception | None = None
+    for attempt in attempts:
+        try:
+            with yt_dlp.YoutubeDL(_ydl_options(attempt)) as ydl:
+                info = ydl.extract_info(query, download=False)
+            if isinstance(info, dict):
+                return info
+            last_error = MusicError(502, "The provider returned an unexpected response.", "bad_provider_data")
+        except MusicError:
+            raise
+        except Exception as exc:  # network, extraction, rate limit, region, ...
+            last_error = exc
+    raise MusicError(
+        502,
+        "The music provider is temporarily unavailable. Try again.",
+        "provider_unavailable",
+    ) from last_error
 
 
 # --------------------------------------------------------------------------- catalog
