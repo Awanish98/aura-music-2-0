@@ -242,10 +242,11 @@ def _public_proxy_candidates() -> list[str]:
     return candidates
 
 
-def _proxy_alive(proxy: str, video_id: str) -> bool:
+def _proxy_alive(proxy: str, video_id: str | None = None) -> bool:
+    url = f"https://www.youtube.com/embed/{video_id}" if video_id else "https://www.youtube.com/"
     try:
         opener = urlrequest.build_opener(urlrequest.ProxyHandler({"http": proxy, "https": proxy}))
-        with opener.open(f"https://www.youtube.com/embed/{video_id}", timeout=6) as response:
+        with opener.open(url, timeout=6) as response:
             return response.status == 200
     except Exception:  # noqa: BLE001 - public proxy health check
         return False
@@ -256,13 +257,18 @@ def _is_bot_error(exc: Exception) -> bool:
     return "not a bot" in text or "sign in to confirm" in text or "please sign in" in text
 
 
-def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Resolve a single public video through a cached or freshly checked proxy."""
+def _extract_via_proxy(
+    query: str,
+    extra: dict[str, Any] | None,
+    video_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Resolve public YouTube metadata through a cached or freshly checked proxy.
+
+    Used for both single public videos and public catalog/search queries. Only
+    public video/search metadata passes through the proxy — never credentials,
+    cookies, tokens or account data.
+    """
     global _working_proxies, LAST_PROXY_DIAG
-    match = re.search(r"(?:v=|youtu\.be/|/vi/)([A-Za-z0-9_-]{11})", query)
-    if not match:
-        return None
-    video_id = match.group(1)
 
     def attempt(proxy: str) -> tuple[str, dict[str, Any] | None]:
         try:
@@ -293,7 +299,7 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
             pool.shutdown(wait=False, cancel_futures=True)
         return chosen, working
 
-    # Known-good public proxies first; no credentials or user data go through them.
+    # Known-good public proxies first; no credentials or account data go through them.
     now = time.monotonic()
     with _lock:
         cached = _working_proxies
@@ -362,8 +368,9 @@ def _extract(query: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
                     break
 
     # Datacenter IPs are often bot-gated by YouTube. A keyless public proxy lets
-    # us resolve public videos without cookies, po-tokens or private API keys.
-    proxied = _extract_via_proxy(query, extra)
+    # us resolve public metadata without cookies, po-tokens or private API keys.
+    match = re.search(r"(?:v=|youtu\.be/|/vi/)([A-Za-z0-9_-]{11})", query)
+    proxied = _extract_via_proxy(query, extra, match.group(1) if match else None)
     if proxied is not None:
         LAST_ERROR = None
         return proxied
