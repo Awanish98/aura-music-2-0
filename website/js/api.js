@@ -59,7 +59,7 @@ export const endpoints = {
   search: (q, limit = 18) => api(`/catalog/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   discover: () => api('/catalog/discover'),
   aiSuggest: (input) => api('/ai/suggest', { method: 'POST', timeout: 120000, body: input }),
-  lastfmToken: () => api('/lastfm/token', { method: 'POST', timeout: 20000 }),
+  lastfmToken: () => api('/lastfm/token', { method: 'POST', timeout: 20000, body: {} }),
   lastfmSession: (token) => api('/lastfm/session', { method: 'POST', timeout: 20000, body: { token } }),
   lastfmScrobble: (input) => api('/lastfm/scrobble', { method: 'POST', timeout: 20000, body: input }),
   lastfmNowPlaying: (input) => api('/lastfm/nowplaying', { method: 'POST', timeout: 20000, body: input }),

@@ -339,6 +339,12 @@ class BackendTests(unittest.TestCase):
             self.assertIn("token=abc123", payload["authUrl"])
             mocked.assert_called_once_with("auth.getToken", {})
 
+        # Thin clients call the token step with no body at all.
+        with patch.object(app, "_lastfm_call", return_value={"token": "emptybody"}) as mocked:
+            res = app._lastfm("/api/lastfm/token", b"", "127.0.0.1")
+            self.assertEqual(json.loads(res.body)["token"], "emptybody")
+            mocked.assert_called_once_with("auth.getToken", {})
+
         with patch.object(app, "_lastfm_call", return_value={"ok": True}) as mocked:
             with self.assertRaises(server.ApiError) as missing:
                 app._lastfm(

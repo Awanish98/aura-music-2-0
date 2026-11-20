@@ -859,7 +859,8 @@ class AuraApp:
             raise ApiError(429, "Last.fm requests are rate limited. Try again shortly.", "rate_limited")
         self._lastfm_require()
         action = path.rsplit("/", 1)[-1]
-        payload = self._json_body(body)
+        # The token step needs no input; accept an empty body from thin clients.
+        payload = self._json_body(body) if body else {}
 
         if action == "token":
             data = self._lastfm_call("auth.getToken", {})
