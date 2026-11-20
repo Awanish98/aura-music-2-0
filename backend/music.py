@@ -21,7 +21,7 @@ import os
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from typing import Any, Callable
 from urllib import error as urlerror
 from urllib import parse as urlparse
@@ -199,11 +199,29 @@ def diagnose_proxies(video_id: str) -> dict[str, Any]:
             proxies = [line.strip() for line in response.read().decode("utf-8", "ignore").splitlines()]
     except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
         return {"ok": False, "error": f"proxy list failed: {type(exc).__name__}: {exc}"[:160]}
-    candidates = ["http://" + p for p in proxies if re.fullmatch(r"\d+\.\d+\.\d+\.\d+:\d+", p)][:16]
+    candidates = ["http://" + p for p in proxies if re.fullmatch(r"\d+\.\d+\.\d+\.\d+:\d+", p)][:40]
     url = f"https://www.youtube.com/watch?v={video_id}"
 
+    def proxy_alive(proxy: str) -> bool:
+        try:
+            handler = urlrequest.ProxyHandler({"http": proxy, "https": proxy})
+            opener = urlrequest.build_opener(handler)
+            with opener.open("https://www.youtube.com/embed/" + video_id, timeout=8) as response:
+                return response.status == 200
+        except Exception:  # noqa: BLE001 - proxy health check
+            return False
+
+    # First weed out dead proxies with a cheap, hard-timeout request.
+    alive: list[str] = []
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        for proxy, ok in zip(candidates, pool.map(proxy_alive, candidates)):
+            if ok:
+                alive.append(proxy)
+            if len(alive) >= 6:
+                break
+
     def check(proxy: str) -> tuple[str, dict[str, Any]]:
-        options = {"proxy": proxy, "retries": 0, "socket_timeout": 12}
+        options = {"proxy": proxy, "retries": 0, "socket_timeout": 10, "fragment_retries": 0}
         try:
             with yt_dlp.YoutubeDL(_ydl_options(options)) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -213,12 +231,21 @@ def diagnose_proxies(video_id: str) -> dict[str, Any]:
             return proxy, {"ok": False, "error": detail[:140]}
 
     results: dict[str, Any] = {}
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        for future in as_completed([pool.submit(check, proxy) for proxy in candidates]):
-            proxy, result = future.result()
-            results[proxy] = result
+    futures = []
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(check, proxy) for proxy in alive]
+        done, pending = wait(futures, timeout=45)
+        for future in done:
+            try:
+                proxy, result = future.result()
+                results[proxy] = result
+            except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
+                results["unknown"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:140]}
+    for future in futures:
+        if not future.done():
+            future.cancel()
     working = [proxy for proxy, result in results.items() if result.get("ok")]
-    return {"ok": bool(working), "working": working, "results": results}
+    return {"ok": bool(working), "alive": alive, "working": working, "results": results}
 
 
 def diagnose_pages(video_id: str) -> dict[str, Any]:
