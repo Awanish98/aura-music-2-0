@@ -191,6 +191,31 @@ def _with_player_client(extra: dict[str, Any] | None, client: str) -> dict[str, 
     return options
 
 
+def diagnose_clients(video_id: str) -> dict[str, Any]:
+    """TEMPORARY diagnostic: report which yt-dlp player clients resolve a public video."""
+    clients = (
+        "tv", "tv_embedded", "android_vr", "android", "ios",
+        "web_embedded", "web_safari", "web_creator", "mweb", "web",
+    )
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    results: dict[str, Any] = {}
+    for client in clients:
+        options = _with_player_client({"retries": 0, "socket_timeout": 15}, client)
+        try:
+            with yt_dlp.YoutubeDL(_ydl_options(options)) as ydl:
+                info = ydl.extract_info(url, download=False)
+            results[client] = {
+                "ok": True,
+                "has_url": bool(info.get("url")),
+                "formats": len(info.get("requested_formats") or []),
+                "title": _text(info.get("title"), 80),
+            }
+        except Exception as exc:  # noqa: BLE001 - diagnostic reports all failures
+            detail = re.sub(r"https?://\S+", "[url]", f"{type(exc).__name__}: {exc}")
+            results[client] = {"ok": False, "error": detail[:160]}
+    return results
+
+
 def _extract(query: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
     # Search normally works from every host, but the player API used for stream
     # resolution is IP-sensitive. Try the default first, then clients that are
