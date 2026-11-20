@@ -55,8 +55,10 @@ async function bootstrap() {
     state.config = { capabilities: {}, groqConfigured: false };
     setBackendStatus(false);
   }
-  // Mood Radio renders its curator note from config; refresh it once config is known.
-  if (state.route === '/mood') render(document.getElementById('view'), '/mood');
+  // Mood Radio and Settings show config-derived notes; refresh once config is known.
+  if (state.route === '/mood' || state.route === '/settings') {
+    render(document.getElementById('view'), state.route);
+  }
   loadApk();
   loadDiscover();
 
