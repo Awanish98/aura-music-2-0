@@ -813,8 +813,16 @@ class AuraApp:
             raise ApiError(503, "Last.fm is not configured on this backend.", "lastfm_unavailable")
 
     def _lastfm_sign(self, params: dict[str, str]) -> str:
-        """MD5 of alphabetically sorted name+value pairs plus the shared secret."""
-        ordered = "".join(f"{key}{params[key]}" for key in sorted(params))
+        """MD5 of sorted name+value pairs plus the secret.
+
+        Last.fm's legacy API excludes `format` and `api_sig` from the signature;
+        including `format` makes every signed write return error 13.
+        """
+        ordered = "".join(
+            f"{key}{params[key]}"
+            for key in sorted(params)
+            if key not in ("format", "api_sig")
+        )
         return hashlib.md5((ordered + (self.config.lastfm_secret or "")).encode("utf-8")).hexdigest()
 
     def _lastfm_call(self, method: str, params: dict[str, str]) -> dict[str, Any]:
@@ -839,6 +847,18 @@ class AuraApp:
         try:
             with urlrequest.urlopen(request, timeout=self.config.lastfm_timeout) as response:
                 payload = json.loads(response.read().decode("utf-8"))
+        except urlerror.HTTPError as exc:
+            # Last.fm returns 400 + JSON errors for bad tokens/sessions. Surface
+            # its message so users know whether to re-approve or just retry.
+            try:
+                payload = json.loads(exc.read().decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                payload = {}
+            if isinstance(payload, dict) and payload.get("error"):
+                message = _safe_text(payload.get("message"), 180) or "Last.fm rejected the request."
+                raise ApiError(502, message, "lastfm_error") from None
+            LOGGER.warning("Last.fm HTTP error (%s)", exc.code)
+            raise ApiError(502, "Last.fm could not be reached. Try again shortly.", "lastfm_network") from None
         except (urlerror.URLError, TimeoutError, ValueError) as exc:
             LOGGER.warning("Last.fm request failed (%s)", type(exc).__name__)
             raise ApiError(502, "Last.fm could not be reached. Try again shortly.", "lastfm_network") from None

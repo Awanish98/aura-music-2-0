@@ -158,7 +158,10 @@ browser.
   and can never interrupt playback.
 - New `website/js/lastfm.js` is in the service-worker shell; cache bumped to
   `aura-web-2.0.5`. Backend test suite now has 15 tests including a fixed
-  signature vector (`0e922fa4d29391f6e1c456a9ba2d7543`).
+  signature vector (`ac9725227f5c54da5504570e23c688e5`). Last.fm's legacy API
+  excludes `format`/`api_sig` from the signed parameter string; verified live
+  that a bogus session key returns error 9 (not error 13), so real scrobbles
+  will be accepted after approval.
 - **Pending user step:** approve AURA in the Last.fm popup, then finish connect
   in Settings. Verify `/api/config` shows `lastfmConfigured:true` and
   `capabilities.lastfm:true` after the Render redeploy.

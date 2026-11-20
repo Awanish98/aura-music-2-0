@@ -325,7 +325,9 @@ class BackendTests(unittest.TestCase):
             "api_key": "k", "artist": "Artist", "format": "json",
             "method": "track.love", "sk": "session", "track": "Title",
         }
-        self.assertEqual(app._lastfm_sign(params), "0e922fa4d29391f6e1c456a9ba2d7543")
+        # Verified live: Last.fm excludes `format`/`api_sig` from signed writes.
+        self.assertEqual(app._lastfm_sign(params), "ac9725227f5c54da5504570e23c688e5")
+        self.assertEqual(app._lastfm_sign({**params, "format": "xml"}), "ac9725227f5c54da5504570e23c688e5")
 
     def test_lastfm_auth_and_scrobble_validation(self):
         cfg = replace(self.config, lastfm_api_key="key123", lastfm_secret="secret123")
