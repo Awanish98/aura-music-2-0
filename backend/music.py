@@ -285,7 +285,8 @@ def _extract_via_proxy(query: str, extra: dict[str, Any] | None) -> dict[str, An
                     if info is not None:
                         working.append(proxy)
                         if chosen is None:
-                            chosen = info
+                            chosen = dict(info)
+                            chosen["_aura_proxy"] = proxy
                 except Exception:  # noqa: BLE001 - ignore a failed public proxy
                     continue
         finally:
@@ -485,6 +486,7 @@ def resolve(video_id: str) -> dict[str, Any]:
         "expiresAt": time.time() + RESOLVE_TTL,
         "durationMs": _ms(info.get("duration")),
         "title": clean_title(_text(info.get("title"), 240)),
+        "proxy": _text(info.get("_aura_proxy"), 120) or None,
     }
     with _lock:
         _resolve_cache[video_id] = (now + RESOLVE_TTL, resolved)
@@ -527,8 +529,14 @@ def open_stream(video_id: str, range_header: str | None) -> Any:
     if range_header:
         headers["Range"] = range_header.strip()
     request = urlrequest.Request(resolved["url"], headers=headers, method="GET")
+    proxy = resolved.get("proxy")
+    opener = (
+        urlrequest.build_opener(urlrequest.ProxyHandler({"http": proxy, "https": proxy}))
+        if proxy
+        else urlrequest.build_opener()
+    )
     try:
-        return urlrequest.urlopen(request, timeout=30)
+        return opener.open(request, timeout=30)
     except urlerror.HTTPError as exc:
         if exc.code == 416:
             raise MusicError(416, "Requested range is not satisfiable.", "range_not_satisfiable") from exc
